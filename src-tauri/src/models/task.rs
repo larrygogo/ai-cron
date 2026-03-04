@@ -96,3 +96,47 @@ pub struct UpdateTaskRequest {
     pub env_vars: Option<HashMap<String, String>>,
     pub webhook_config: Option<Option<WebhookConfig>>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ai_tool_from_str_as_str_roundtrip() {
+        let cases = vec![
+            ("claude", AiTool::Claude),
+            ("opencode", AiTool::Opencode),
+            ("codex", AiTool::Codex),
+            ("custom", AiTool::Custom),
+        ];
+        for (s, expected) in &cases {
+            let tool = AiTool::from_str(s);
+            assert_eq!(&tool, expected);
+            assert_eq!(tool.as_str(), *s);
+        }
+    }
+
+    #[test]
+    fn ai_tool_from_str_unknown_defaults_to_claude() {
+        assert_eq!(AiTool::from_str("unknown"), AiTool::Claude);
+        assert_eq!(AiTool::from_str(""), AiTool::Claude);
+    }
+
+    #[test]
+    fn ai_tool_serde_roundtrip() {
+        let tool = AiTool::Codex;
+        let json = serde_json::to_string(&tool).unwrap();
+        assert_eq!(json, "\"codex\"");
+        let back: AiTool = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, AiTool::Codex);
+    }
+
+    #[test]
+    fn ai_tool_serde_all_variants() {
+        for variant in &[AiTool::Claude, AiTool::Opencode, AiTool::Codex, AiTool::Custom] {
+            let json = serde_json::to_string(variant).unwrap();
+            let back: AiTool = serde_json::from_str(&json).unwrap();
+            assert_eq!(&back, variant);
+        }
+    }
+}

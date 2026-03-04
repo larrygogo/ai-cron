@@ -75,3 +75,49 @@ pub struct RunWithTaskName {
     pub run: Run,
     pub task_name: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn run_status_from_str_as_str_roundtrip() {
+        let cases = vec![
+            ("queued", RunStatus::Queued),
+            ("running", RunStatus::Running),
+            ("success", RunStatus::Success),
+            ("failed", RunStatus::Failed),
+            ("killed", RunStatus::Killed),
+        ];
+        for (s, expected) in &cases {
+            let status = RunStatus::from_str(s);
+            assert_eq!(&status, expected);
+            assert_eq!(status.as_str(), *s);
+        }
+    }
+
+    #[test]
+    fn run_status_unknown_defaults_to_queued() {
+        assert_eq!(RunStatus::from_str("unknown"), RunStatus::Queued);
+        assert_eq!(RunStatus::from_str(""), RunStatus::Queued);
+    }
+
+    #[test]
+    fn trigger_source_from_str_as_str_roundtrip() {
+        let cases = vec![
+            ("scheduler", TriggerSource::Scheduler),
+            ("manual", TriggerSource::Manual),
+        ];
+        for (s, expected) in &cases {
+            let src = TriggerSource::from_str(s);
+            assert_eq!(&src, expected);
+            assert_eq!(src.as_str(), *s);
+        }
+    }
+
+    #[test]
+    fn trigger_source_unknown_defaults_to_scheduler() {
+        assert_eq!(TriggerSource::from_str("unknown"), TriggerSource::Scheduler);
+        assert_eq!(TriggerSource::from_str(""), TriggerSource::Scheduler);
+    }
+}

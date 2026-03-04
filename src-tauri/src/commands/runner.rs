@@ -517,3 +517,146 @@ pub async fn kill_run(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::run::{Run, RunStatus, TriggerSource};
+    use crate::models::task::{AiTool, Task};
+    use chrono::Utc;
+    use std::collections::HashMap;
+
+    fn make_test_task(ai_tool: AiTool) -> Task {
+        Task {
+            id: "test-id".to_string(),
+            name: "Test Task".to_string(),
+            cron_expression: "* * * * *".to_string(),
+            cron_human: "every minute".to_string(),
+            ai_tool,
+            custom_command: None,
+            prompt: "do something".to_string(),
+            working_directory: "/tmp/work".to_string(),
+            enabled: true,
+            inject_context: false,
+            restrict_network: false,
+            restrict_filesystem: false,
+            env_vars: HashMap::new(),
+            webhook_config: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            last_run_at: None,
+            last_run_status: None,
+        }
+    }
+
+    #[test]
+    fn build_command_claude() {
+        let task = make_test_task(AiTool::Claude);
+        let (prog, args) = build_command(&task);
+        assert_eq!(prog, "claude");
+        assert_eq!(args, vec!["-p", "do something"]);
+    }
+
+    #[test]
+    fn build_command_opencode() {
+        let task = make_test_task(AiTool::Opencode);
+        let (prog, args) = build_command(&task);
+        assert_eq!(prog, "opencode");
+        assert_eq!(args, vec!["do something"]);
+    }
+
+    #[test]
+    fn build_command_codex() {
+        let task = make_test_task(AiTool::Codex);
+        let (prog, args) = build_command(&task);
+        assert_eq!(prog, "codex");
+        assert_eq!(args, vec!["--approval-mode", "full-auto", "do something"]);
+    }
+
+    #[test]
+    fn build_command_custom_with_template() {
+        let mut task = make_test_task(AiTool::Custom);
+        task.custom_command = Some("mybin --prompt {prompt} --dir {cwd}".to_string());
+        let (prog, args) = build_command(&task);
+        assert_eq!(prog, "mybin");
+        // Note: split_whitespace splits "do something" into ["do", "something"]
+        assert!(args.contains(&"--prompt".to_string()));
+        assert!(args.contains(&"do".to_string()));
+        assert!(args.contains(&"something".to_string()));
+        assert!(args.contains(&"/tmp/work".to_string()));
+        assert!(args.contains(&"--dir".to_string()));
+    }
+
+    #[test]
+    fn build_command_custom_replaces_timestamp() {
+        let mut task = make_test_task(AiTool::Custom);
+        task.custom_command = Some("echo {timestamp}".to_string());
+        let (prog, args) = build_command(&task);
+        assert_eq!(prog, "echo");
+        // timestamp is dynamic, just check it's not the literal placeholder
+        assert!(!args[0].contains("{timestamp}"));
+    }
+
+    #[test]
+    fn build_prompt_no_inject() {
+        let task = make_test_task(AiTool::Claude);
+        let result = build_prompt(&task, None);
+        assert_eq!(result, "do something");
+    }
+
+    #[test]
+    fn build_prompt_inject_no_last_run() {
+        let mut task = make_test_task(AiTool::Claude);
+        task.inject_context = true;
+        let result = build_prompt(&task, None);
+        assert!(result.contains("[Context]"));
+        assert!(result.contains("Last run: never"));
+        assert!(result.contains("[Task]"));
+        assert!(result.contains("do something"));
+    }
+
+    #[test]
+    fn build_prompt_inject_with_last_run() {
+        let mut task = make_test_task(AiTool::Claude);
+        task.inject_context = true;
+        let last_run = Run {
+            id: "run-1".to_string(),
+            task_id: "test-id".to_string(),
+            status: RunStatus::Success,
+            exit_code: Some(0),
+            stdout: "hello output".to_string(),
+            stderr: String::new(),
+            started_at: Utc::now(),
+            ended_at: Some(Utc::now()),
+            duration_ms: Some(5000),
+            triggered_by: TriggerSource::Scheduler,
+        };
+        let result = build_prompt(&task, Some(&last_run));
+        assert!(result.contains("[Context]"));
+        assert!(result.contains("success"));
+        assert!(result.contains("5s"));
+        assert!(result.contains("hello output"));
+        assert!(result.contains("[Task]"));
+        assert!(result.contains("do something"));
+    }
+
+    #[test]
+    fn build_prompt_inject_duration_formatting() {
+        let mut task = make_test_task(AiTool::Claude);
+        task.inject_context = true;
+        let last_run = Run {
+            id: "run-1".to_string(),
+            task_id: "test-id".to_string(),
+            status: RunStatus::Failed,
+            exit_code: Some(1),
+            stdout: String::new(),
+            stderr: "error".to_string(),
+            started_at: Utc::now(),
+            ended_at: Some(Utc::now()),
+            duration_ms: Some(125000), // 2m5s
+            triggered_by: TriggerSource::Manual,
+        };
+        let result = build_prompt(&task, Some(&last_run));
+        assert!(result.contains("2m5s"));
+    }
+}
