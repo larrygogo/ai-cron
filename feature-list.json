@@ -1,0 +1,196 @@
+{
+  "project": "AI Cron",
+  "description": "可视化 AI 定时任务管理器，支持 ClaudeCode/OpenCode/Codex 等工具的定时调度",
+  "version": "0.1.0",
+  "tech_stack": {
+    "backend": "Rust + Tauri 2.0 + tokio + rusqlite + tokio-cron-scheduler + reqwest",
+    "frontend": "React 19 + TypeScript + Vite + TailwindCSS + Zustand",
+    "database": "SQLite (embedded, FTS5)",
+    "ai": "Claude API / OpenAI API / Ollama (NL parsing)"
+  },
+  "stats": {
+    "total": 12,
+    "completed": 1,
+    "in_progress": 0,
+    "pending": 11
+  },
+  "features": [
+    {
+      "id": 1,
+      "category": "infrastructure",
+      "priority": "high",
+      "description": "项目初始化与基础架构",
+      "steps": [
+        "Tauri 2.0 + React + TypeScript 初始化",
+        "TailwindCSS 深色终端主题",
+        "SQLite 建表（tasks, runs, settings, FTS5）",
+        "Task CRUD Tauri commands",
+        "Run 查询 commands",
+        "Webhook 数据模型",
+        "Runner 进程框架",
+        "Scheduler engine 框架",
+        "前端 React 骨架（App, Dashboard, Settings, 组件）",
+        "全栈编译通过"
+      ],
+      "passes": true,
+      "completed_at": "2026-03-05",
+      "notes": "全栈 cargo build + tsc --noEmit 均通过"
+    },
+    {
+      "id": 2,
+      "category": "ui",
+      "priority": "high",
+      "description": "任务 CRUD 完整 UI（编辑弹窗、Webhook 配置、沙箱开关）",
+      "steps": [
+        "TaskForm 编辑弹窗",
+        "Webhook 配置表单",
+        "沙箱模式开关",
+        "env_vars 键值对编辑"
+      ],
+      "passes": false,
+      "completed_at": null,
+      "notes": ""
+    },
+    {
+      "id": 3,
+      "category": "feature",
+      "priority": "high",
+      "description": "调度引擎 hot-reload + Runner 进程管理",
+      "steps": [
+        "enable/disable task 热更新 scheduler",
+        "Runner 进程 kill 支持",
+        "运行中任务全局注册表",
+        "DB 连接共享优化"
+      ],
+      "passes": false,
+      "completed_at": null,
+      "notes": ""
+    },
+    {
+      "id": 4,
+      "category": "ui",
+      "priority": "high",
+      "description": "AI 工具检测 UI + 安装按钮",
+      "steps": [
+        "ToolStatusBar 组件",
+        "Settings 页工具列表与安装按钮"
+      ],
+      "passes": false,
+      "completed_at": null,
+      "notes": ""
+    },
+    {
+      "id": 5,
+      "category": "ui",
+      "priority": "high",
+      "description": "Run History + Log Viewer 完整联调",
+      "steps": [
+        "RunHistory 与后端联调",
+        "RunLogModal ANSI 颜色渲染",
+        "实时流式输出展示"
+      ],
+      "passes": false,
+      "completed_at": null,
+      "notes": ""
+    },
+    {
+      "id": 6,
+      "category": "feature",
+      "priority": "medium",
+      "description": "Webhook 通知（飞书 + Generic HTTP）",
+      "steps": [
+        "飞书 Card 格式发送",
+        "Generic JSON POST",
+        "4 种触发时机",
+        "完整 stdout/stderr 附加"
+      ],
+      "passes": false,
+      "completed_at": null,
+      "notes": "WebhookSender Rust 实现已完成，需 UI 配置表单联调"
+    },
+    {
+      "id": 7,
+      "category": "ui",
+      "priority": "medium",
+      "description": "全局 Logs 页（搜索/过滤/导出/保留策略）",
+      "steps": [
+        "Logs 页面组件",
+        "FTS 搜索联调",
+        "状态/时间过滤",
+        "导出 .txt/.json",
+        "一键清理旧日志"
+      ],
+      "passes": false,
+      "completed_at": null,
+      "notes": ""
+    },
+    {
+      "id": 8,
+      "category": "feature",
+      "priority": "medium",
+      "description": "自然语言解析 UI 完整联调",
+      "steps": [
+        "AddTaskModal NL → draft 完整流程",
+        "多 provider 切换",
+        "Settings 页 API key 配置"
+      ],
+      "passes": false,
+      "completed_at": null,
+      "notes": "Rust 后端三 provider 已实现，前端 UI 骨架已写"
+    },
+    {
+      "id": 9,
+      "category": "feature",
+      "priority": "low",
+      "description": "上下文注入（时间/目录/上次运行信息）",
+      "steps": [
+        "inject_context 开关 UI",
+        "Rust runner 上下文拼接逻辑"
+      ],
+      "passes": false,
+      "completed_at": null,
+      "notes": "Rust 逻辑已实现，需 UI 开关"
+    },
+    {
+      "id": 10,
+      "category": "feature",
+      "priority": "low",
+      "description": "沙箱模式（网络/文件系统独立开关）",
+      "steps": [
+        "Linux unshare/bwrap 实现",
+        "macOS sandbox-exec 实现",
+        "Windows Job Object 实现",
+        "UI 开关"
+      ],
+      "passes": false,
+      "completed_at": null,
+      "notes": "Linux 网络限制已在 runner.rs 实现，需完善"
+    },
+    {
+      "id": 11,
+      "category": "feature",
+      "priority": "low",
+      "description": "系统托盘 + 桌面通知",
+      "steps": [
+        "托盘图标 + 右键菜单",
+        "任务完成/失败通知"
+      ],
+      "passes": false,
+      "completed_at": null,
+      "notes": ""
+    },
+    {
+      "id": 12,
+      "category": "ui",
+      "priority": "low",
+      "description": "键盘快捷键完整 + 空状态优化",
+      "steps": [
+        "N 新增、R 运行、E 编辑、Del 删除、Space 切换",
+        "骨架屏、错误 toast"
+      ],
+      "passes": false,
+      "completed_at": null,
+      "notes": "N 快捷键已实现"
+    }
+  ]
+}
