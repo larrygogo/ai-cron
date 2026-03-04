@@ -12,6 +12,7 @@
 
 ## 最近完成（最新在前）
 
+- [2026-03-05] test: 三层验证方案 Step 1-3 — 前端 25 tests (Vitest + React Testing Library) + 后端 26 tests (cargo test + 内存 SQLite)，共 51 个测试全部通过
 - [2026-03-05] feature #2-#12: Phase 2-4 全功能实现 — TaskFormModal 编辑弹窗、调度引擎 hot-reload、进程 kill、全局 Logs 页、ToolStatusBar、系统托盘、桌面通知、键盘快捷键、Toast
 - [2026-03-05] feature #1: 项目初始化与基础架构搭建 — Tauri 2.0 + React + SQLite + 全前后端骨架
 
@@ -19,9 +20,10 @@
 
 ## 下一步任务
 
-所有计划功能已完成。后续可考虑：
+所有计划功能已完成，前端+后端单元测试已添加。后续可考虑：
+- [x] 添加单元测试（51 tests 已完成）
+- [ ] E2E 测试（WebdriverIO + tauri-driver，需 build 后运行）
 - [ ] 端到端功能测试（cargo tauri dev 验证所有流程）
-- [ ] 添加单元测试
 - [ ] 发布 v0.1.0 版本
 
 ---
