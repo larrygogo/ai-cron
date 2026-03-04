@@ -2,18 +2,24 @@ use crate::commands::runner::execute_task;
 use crate::commands::tasks::row_to_task_pub;
 use crate::db::DbConn;
 use crate::models::run::TriggerSource;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::AppHandle;
+use tokio::sync::Mutex as TokioMutex;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 pub struct SchedulerState {
     pub scheduler: JobScheduler,
+    job_map: TokioMutex<HashMap<String, uuid::Uuid>>,
 }
 
 impl SchedulerState {
     pub async fn new() -> anyhow::Result<Self> {
         let scheduler = JobScheduler::new().await?;
-        Ok(Self { scheduler })
+        Ok(Self {
+            scheduler,
+            job_map: TokioMutex::new(HashMap::new()),
+        })
     }
 
     pub async fn start(&self) -> anyhow::Result<()> {
@@ -52,22 +58,27 @@ impl SchedulerState {
 
         for task in tasks {
             log::info!("Scheduling task: {} [{}]", task.name, task.cron_expression);
-            self.schedule_task(task, db.clone(), app_handle.clone())
-                .await;
+            self.add_task(task, db.clone(), app_handle.clone())
+                .await
+                .ok();
         }
     }
 
-    /// Schedule a single task (idempotent — caller is responsible for dedup)
-    pub async fn schedule_task(
+    /// Add or replace a single task in the scheduler
+    pub async fn add_task(
         &self,
         task: crate::models::task::Task,
         db: Arc<DbConn>,
         app_handle: AppHandle,
-    ) {
+    ) -> anyhow::Result<()> {
+        // Remove existing job if any
+        self.remove_task(&task.id).await.ok();
+
+        let task_id = task.id.clone();
         let cron_expr = task.cron_expression.clone();
         let task_name = task.name.clone();
 
-        let job_result = Job::new_async(cron_expr.as_str(), move |_uuid, _lock| {
+        let job = Job::new_async(cron_expr.as_str(), move |_uuid, _lock| {
             let task = task.clone();
             let db = db.clone();
             let app_handle = app_handle.clone();
@@ -75,22 +86,21 @@ impl SchedulerState {
                 log::info!("Executing scheduled task: {}", task.name);
                 execute_task(task, TriggerSource::Scheduler, app_handle, db).await;
             })
-        });
+        })?;
 
-        match job_result {
-            Ok(job) => {
-                if let Err(e) = self.scheduler.add(job).await {
-                    log::error!("Failed to add job for task '{}': {}", task_name, e);
-                }
-            }
-            Err(e) => {
-                log::error!(
-                    "Invalid cron expression '{}' for task '{}': {}",
-                    cron_expr,
-                    task_name,
-                    e
-                );
-            }
+        let job_id = job.guid();
+        self.scheduler.add(job).await?;
+        self.job_map.lock().await.insert(task_id, job_id);
+        log::info!("Scheduled task '{}' [{}]", task_name, cron_expr);
+        Ok(())
+    }
+
+    /// Remove a task from the scheduler by task_id
+    pub async fn remove_task(&self, task_id: &str) -> anyhow::Result<()> {
+        if let Some(job_id) = self.job_map.lock().await.remove(task_id) {
+            self.scheduler.remove(&job_id).await?;
+            log::info!("Removed scheduled job for task '{}'", task_id);
         }
+        Ok(())
     }
 }

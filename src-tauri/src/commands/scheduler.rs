@@ -1,20 +1,3 @@
-use crate::db::DbConn;
-use crate::scheduler::engine::SchedulerState;
-use tauri::State;
-
-#[tauri::command]
-pub fn set_task_enabled_and_reschedule(
-    _id: String,
-    _enabled: bool,
-    _db: State<'_, DbConn>,
-    _scheduler: State<'_, SchedulerState>,
-) -> Result<(), String> {
-    // Full implementation: update DB then add/remove from scheduler
-    // For Phase 1, DB update is handled by tasks::set_task_enabled
-    // Scheduler hot-reload will be wired in Phase 2
-    Ok(())
-}
-
 #[tauri::command]
 pub async fn preview_next_runs(
     cron_expr: String,

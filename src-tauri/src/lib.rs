@@ -2,6 +2,7 @@ mod commands;
 mod db;
 mod models;
 mod scheduler;
+mod tray;
 mod webhook;
 
 use commands::{
@@ -42,6 +43,9 @@ pub fn run() {
 
             // Initialize database
             let db_conn = db::init_db(&app_data_dir).expect("Failed to initialize database");
+            app.manage(db_conn);
+
+            // Create shared DB connection for scheduler/runner
             let db_arc = Arc::new(DbConn(std::sync::Mutex::new(
                 rusqlite::Connection::open(format!("{}/ai-cron.db", app_data_dir))
                     .expect("Second DB connection failed"),
@@ -49,8 +53,7 @@ pub fn run() {
             db_arc.0.lock().unwrap()
                 .execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
                 .ok();
-
-            app.manage(db_conn);
+            app.manage(db_arc.clone());
 
             // Initialize and start scheduler
             let app_handle = app.handle().clone();
@@ -63,21 +66,25 @@ pub fn run() {
                             log::error!("Failed to start scheduler: {}", e);
                             return;
                         }
+                        let scheduler_arc = Arc::new(scheduler_state);
+
                         // Load existing tasks
-                        scheduler_state
-                            .load_tasks(db_for_scheduler, app_handle)
+                        scheduler_arc
+                            .load_tasks(db_for_scheduler, app_handle.clone())
                             .await;
                         log::info!("Scheduler started successfully");
-                        // Keep scheduler alive
-                        loop {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-                        }
+
+                        // Register scheduler as managed state
+                        app_handle.manage(scheduler_arc);
                     }
                     Err(e) => {
                         log::error!("Failed to create scheduler: {}", e);
                     }
                 }
             });
+
+            // Setup system tray
+            tray::setup_tray(app.handle())?;
 
             Ok(())
         })

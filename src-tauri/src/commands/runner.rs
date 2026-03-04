@@ -3,10 +3,15 @@ use crate::models::run::{Run, RunStatus, TriggerSource};
 use crate::models::task::{AiTool, Task};
 use crate::webhook::WebhookSender;
 use chrono::Utc;
-use std::sync::Arc;
-use tauri::{AppHandle, Emitter, State};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex as StdMutex};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use uuid::Uuid;
+
+// Global process registry: run_id -> PID
+static PROCESS_REGISTRY: std::sync::LazyLock<StdMutex<HashMap<String, u32>>> =
+    std::sync::LazyLock::new(|| StdMutex::new(HashMap::new()));
 
 /// Build the command args for a given AI tool
 fn build_command(task: &Task) -> (String, Vec<String>) {
@@ -28,7 +33,6 @@ fn build_command(task: &Task) -> (String, Vec<String>) {
             ],
         ),
         AiTool::Custom => {
-            // Template: replace {prompt} and {cwd}
             let tmpl = task
                 .custom_command
                 .clone()
@@ -40,7 +44,6 @@ fn build_command(task: &Task) -> (String, Vec<String>) {
                     "{timestamp}",
                     &Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
                 );
-            // Split into program + args (simple whitespace split)
             let mut parts = expanded.splitn(2, ' ');
             let prog = parts.next().unwrap_or("echo").to_string();
             let args = parts
@@ -149,7 +152,6 @@ pub async fn execute_task(
                 triggered_by.as_str()
             ],
         );
-        // Update task last_run_at
         let _ = conn.execute(
             "UPDATE tasks SET last_run_at=?1, last_run_status='running' WHERE id=?2",
             rusqlite::params![started_at.to_rfc3339(), task.id],
@@ -188,7 +190,6 @@ pub async fn execute_task(
     // Sandbox: restrict network on Linux
     #[cfg(target_os = "linux")]
     if task.restrict_network || task.restrict_filesystem {
-        // Wrap with unshare
         let mut unshare_args = vec![];
         if task.restrict_network {
             unshare_args.push("--net");
@@ -196,8 +197,6 @@ pub async fn execute_task(
         if task.restrict_filesystem {
             unshare_args.push("--mount");
         }
-        // Rebuild as: unshare <flags> <program> <args>
-        // Note: requires root or user namespaces enabled
         let original_program = program.clone();
         let mut full_args: Vec<String> = unshare_args.iter().map(|s| s.to_string()).collect();
         full_args.push(original_program);
@@ -217,6 +216,11 @@ pub async fn execute_task(
 
     match cmd.spawn() {
         Ok(mut child) => {
+            // Register PID in process registry
+            if let Some(pid) = child.id() {
+                PROCESS_REGISTRY.lock().unwrap().insert(run_id.clone(), pid);
+            }
+
             let stdout = child.stdout.take().unwrap();
             let stderr = child.stderr.take().unwrap();
 
@@ -225,7 +229,6 @@ pub async fn execute_task(
             let app_out = app_handle.clone();
             let app_err = app_handle.clone();
 
-            // Collect stdout
             let mut stdout_lines = BufReader::new(stdout).lines();
             let mut stderr_lines = BufReader::new(stderr).lines();
 
@@ -286,6 +289,9 @@ pub async fn execute_task(
                     final_status = RunStatus::Failed;
                 }
             }
+
+            // Remove from process registry
+            PROCESS_REGISTRY.lock().unwrap().remove(&run_id);
         }
         Err(e) => {
             stderr_buf = format!("Failed to spawn process '{}': {}", program, e);
@@ -312,7 +318,6 @@ pub async fn execute_task(
                 run_id
             ],
         );
-        // Update FTS index manually since trigger may not fire on UPDATE
         let _ = conn.execute(
             "INSERT OR REPLACE INTO runs_fts(run_id, task_id, task_name, stdout, stderr)
              SELECT ?1, ?2, t.name, ?3, ?4 FROM tasks t WHERE t.id = ?2",
@@ -336,6 +341,9 @@ pub async fn execute_task(
         }),
     );
 
+    // Send desktop notification
+    send_notification(&app_handle, &task, &final_status);
+
     // Send webhook on completion
     if let Some(ref wh) = task.webhook_config {
         webhook_sender
@@ -351,12 +359,65 @@ pub async fn execute_task(
     }
 }
 
+/// Send desktop notification based on settings
+fn send_notification(app_handle: &AppHandle, task: &Task, status: &RunStatus) {
+    use tauri_plugin_notification::NotificationExt;
+
+    // Read settings to check notification preferences
+    if let Some(db) = app_handle.try_state::<DbConn>() {
+        let (notify_success, notify_failure) = {
+            let conn = db.0.lock().unwrap();
+            let success: bool = conn
+                .query_row(
+                    "SELECT value FROM settings WHERE key = 'notify_on_success'",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false);
+            let failure: bool = conn
+                .query_row(
+                    "SELECT value FROM settings WHERE key = 'notify_on_failure'",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(true);
+            (success, failure)
+        };
+
+        let should_notify = match status {
+            RunStatus::Success => notify_success,
+            RunStatus::Failed => notify_failure,
+            RunStatus::Killed => notify_failure,
+            _ => false,
+        };
+
+        if should_notify {
+            let icon = match status {
+                RunStatus::Success => "✓",
+                RunStatus::Failed => "✗",
+                RunStatus::Killed => "⊘",
+                _ => "",
+            };
+            app_handle
+                .notification()
+                .builder()
+                .title("AI Cron")
+                .body(format!("{} {} — {}", icon, task.name, status.as_str()))
+                .show()
+                .ok();
+        }
+    }
+}
+
 /// Tauri command: manually trigger a task now
 #[tauri::command]
 pub async fn trigger_task_now(
     task_id: String,
     app_handle: AppHandle,
     db: State<'_, DbConn>,
+    db_arc: State<'_, Arc<DbConn>>,
 ) -> Result<String, String> {
     let task = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -372,37 +433,87 @@ pub async fn trigger_task_now(
     };
 
     let run_id = Uuid::new_v4().to_string();
-    // Get DB path to open a second connection for the async task
-    let db_path = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        conn.path()
-            .map(|p| p.to_string())
-            .unwrap_or_else(|| ":memory:".to_string())
-    };
-    let db_arc = Arc::new(DbConn(std::sync::Mutex::new(
-        rusqlite::Connection::open(&db_path).map_err(|e| e.to_string())?,
-    )));
-    db_arc
-        .0
-        .lock()
-        .unwrap()
-        .execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
-        .ok();
+    let shared_db = db_arc.inner().clone();
 
     tokio::spawn(execute_task(
         task,
         TriggerSource::Manual,
         app_handle,
-        db_arc,
+        shared_db,
     ));
 
     Ok(run_id)
 }
 
-/// Kill a running process (tracked via global run state — simplified version)
+/// Kill a running process by run_id
 #[tauri::command]
-pub fn kill_run(_run_id: String) -> Result<(), String> {
-    // Full implementation requires a global process registry (Phase 2)
-    // Placeholder: mark run as killed in DB
+pub async fn kill_run(
+    run_id: String,
+    db: State<'_, DbConn>,
+    app_handle: AppHandle,
+) -> Result<(), String> {
+    let pid = PROCESS_REGISTRY
+        .lock()
+        .unwrap()
+        .remove(&run_id);
+
+    if let Some(pid) = pid {
+        // Kill the process tree
+        #[cfg(target_os = "windows")]
+        {
+            std::process::Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/T", "/F"])
+                .output()
+                .ok();
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            // Use kill command to terminate the process group
+            std::process::Command::new("kill")
+                .args(["-TERM", &format!("-{}", pid)])
+                .output()
+                .ok();
+        }
+
+        // Update DB
+        let ended_at = Utc::now();
+        {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            let task_id: Option<String> = conn
+                .query_row(
+                    "SELECT task_id FROM runs WHERE id = ?1",
+                    [&run_id],
+                    |r| r.get(0),
+                )
+                .ok();
+
+            conn.execute(
+                "UPDATE runs SET status='killed', ended_at=?1 WHERE id=?2",
+                rusqlite::params![ended_at.to_rfc3339(), run_id],
+            )
+            .ok();
+
+            if let Some(ref tid) = task_id {
+                conn.execute(
+                    "UPDATE tasks SET last_run_status='killed' WHERE id=?1",
+                    [tid],
+                )
+                .ok();
+            }
+
+            // Emit run:completed event
+            let _ = app_handle.emit(
+                "run:completed",
+                serde_json::json!({
+                    "runId": run_id,
+                    "taskId": task_id,
+                    "status": "killed",
+                    "exitCode": null,
+                    "durationMs": 0
+                }),
+            );
+        }
+    }
+
     Ok(())
 }

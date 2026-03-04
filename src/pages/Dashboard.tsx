@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { TaskSidebar } from "../components/tasks/TaskSidebar";
 import { TaskDetail } from "../components/tasks/TaskDetail";
 import { AddTaskModal } from "../components/nl/AddTaskModal";
+import { TaskFormModal } from "../components/tasks/TaskFormModal";
 import { useTaskStore } from "../stores/tasks";
 import { useRunStore } from "../stores/runs";
 import { Bot } from "lucide-react";
@@ -12,7 +13,8 @@ export function Dashboard() {
   const { tasks, selectedId } = useTaskStore();
   const { appendOutput, updateRunStatus } = useRunStore();
   const [showAddModal, setShowAddModal] = useState(false);
-  const [_editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [showManualCreate, setShowManualCreate] = useState(false);
   const [liveRunId, setLiveRunId] = useState<string | undefined>();
 
   const selectedTask = tasks.find((t) => t.id === selectedId) ?? null;
@@ -44,11 +46,32 @@ export function Dashboard() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === "n" || e.key === "N") setShowAddModal(true);
+      switch (e.key) {
+        case "n": case "N": setShowAddModal(true); break;
+        case "e": case "E": if (selectedTask) setEditingTask(selectedTask); break;
+        case "r": case "R":
+          if (selectedTask) api.triggerTaskNow(selectedTask.id).catch(console.error);
+          break;
+        case "Delete":
+          if (selectedTask && confirm(`Delete task "${selectedTask.name}"?`)) {
+            api.deleteTask(selectedTask.id).then(() => {
+              useTaskStore.getState().removeTaskFromStore(selectedTask.id);
+            });
+          }
+          break;
+        case " ":
+          if (selectedTask) {
+            e.preventDefault();
+            api.setTaskEnabled(selectedTask.id, !selectedTask.enabled).then(() => {
+              useTaskStore.getState().updateTaskInStore({ ...selectedTask, enabled: !selectedTask.enabled });
+            });
+          }
+          break;
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+  }, [selectedTask]);
 
   return (
     <div style={{ display: "flex", height: "100%", width: "100%" }}>
@@ -71,6 +94,12 @@ export function Dashboard() {
       {/* Modals */}
       {showAddModal && (
         <AddTaskModal onClose={() => setShowAddModal(false)} />
+      )}
+      {editingTask && (
+        <TaskFormModal task={editingTask} onClose={() => setEditingTask(null)} />
+      )}
+      {showManualCreate && (
+        <TaskFormModal onClose={() => setShowManualCreate(false)} />
       )}
     </div>
   );

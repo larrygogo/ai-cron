@@ -1,10 +1,13 @@
 import { useState } from "react";
-import { Settings as SettingsIcon, Clock, AlignLeft } from "lucide-react";
+import { Settings as SettingsIcon, Clock, AlignLeft, FileText } from "lucide-react";
 import { Dashboard } from "./pages/Dashboard";
 import { Settings } from "./pages/Settings";
+import { Logs } from "./pages/Logs";
+import { ToolStatusBar } from "./components/tools/ToolStatusBar";
+import { Toast } from "./components/common/Toast";
 import "./index.css";
 
-type Page = "dashboard" | "settings";
+type Page = "dashboard" | "settings" | "logs";
 
 export default function App() {
   const [page, setPage] = useState<Page>("dashboard");
@@ -65,6 +68,12 @@ export default function App() {
             label="Tasks"
           />
           <NavBtn
+            active={page === "logs"}
+            onClick={() => setPage("logs")}
+            icon={<FileText size={11} />}
+            label="Logs"
+          />
+          <NavBtn
             active={page === "settings"}
             onClick={() => setPage("settings")}
             icon={<SettingsIcon size={11} />}
@@ -73,6 +82,8 @@ export default function App() {
         </div>
 
         <div style={{ flex: 1 }} data-tauri-drag-region />
+
+        <ToolStatusBar />
 
         <div
           style={{
@@ -88,8 +99,12 @@ export default function App() {
       {/* Page content */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         {page === "dashboard" && <Dashboard />}
+        {page === "logs" && <Logs />}
         {page === "settings" && <Settings />}
       </div>
+
+      {/* Global toast */}
+      <Toast />
     </div>
   );
 }
