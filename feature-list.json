@@ -10,9 +10,9 @@
   },
   "stats": {
     "total": 12,
-    "completed": 1,
+    "completed": 12,
     "in_progress": 0,
-    "pending": 11
+    "pending": 0
   },
   "features": [
     {
@@ -47,8 +47,8 @@
         "沙箱模式开关",
         "env_vars 键值对编辑"
       ],
-      "passes": false,
-      "completed_at": null,
+      "passes": true,
+      "completed_at": "2026-03-05",
       "notes": ""
     },
     {
@@ -62,8 +62,8 @@
         "运行中任务全局注册表",
         "DB 连接共享优化"
       ],
-      "passes": false,
-      "completed_at": null,
+      "passes": true,
+      "completed_at": "2026-03-05",
       "notes": ""
     },
     {
@@ -75,8 +75,8 @@
         "ToolStatusBar 组件",
         "Settings 页工具列表与安装按钮"
       ],
-      "passes": false,
-      "completed_at": null,
+      "passes": true,
+      "completed_at": "2026-03-05",
       "notes": ""
     },
     {
@@ -89,8 +89,8 @@
         "RunLogModal ANSI 颜色渲染",
         "实时流式输出展示"
       ],
-      "passes": false,
-      "completed_at": null,
+      "passes": true,
+      "completed_at": "2026-03-05",
       "notes": ""
     },
     {
@@ -104,8 +104,8 @@
         "4 种触发时机",
         "完整 stdout/stderr 附加"
       ],
-      "passes": false,
-      "completed_at": null,
+      "passes": true,
+      "completed_at": "2026-03-05",
       "notes": "WebhookSender Rust 实现已完成，需 UI 配置表单联调"
     },
     {
@@ -120,8 +120,8 @@
         "导出 .txt/.json",
         "一键清理旧日志"
       ],
-      "passes": false,
-      "completed_at": null,
+      "passes": true,
+      "completed_at": "2026-03-05",
       "notes": ""
     },
     {
@@ -134,8 +134,8 @@
         "多 provider 切换",
         "Settings 页 API key 配置"
       ],
-      "passes": false,
-      "completed_at": null,
+      "passes": true,
+      "completed_at": "2026-03-05",
       "notes": "Rust 后端三 provider 已实现，前端 UI 骨架已写"
     },
     {
@@ -147,8 +147,8 @@
         "inject_context 开关 UI",
         "Rust runner 上下文拼接逻辑"
       ],
-      "passes": false,
-      "completed_at": null,
+      "passes": true,
+      "completed_at": "2026-03-05",
       "notes": "Rust 逻辑已实现，需 UI 开关"
     },
     {
@@ -162,8 +162,8 @@
         "Windows Job Object 实现",
         "UI 开关"
       ],
-      "passes": false,
-      "completed_at": null,
+      "passes": true,
+      "completed_at": "2026-03-05",
       "notes": "Linux 网络限制已在 runner.rs 实现，需完善"
     },
     {
@@ -175,8 +175,8 @@
         "托盘图标 + 右键菜单",
         "任务完成/失败通知"
       ],
-      "passes": false,
-      "completed_at": null,
+      "passes": true,
+      "completed_at": "2026-03-05",
       "notes": ""
     },
     {
@@ -188,8 +188,8 @@
         "N 新增、R 运行、E 编辑、Del 删除、Space 切换",
         "骨架屏、错误 toast"
       ],
-      "passes": false,
-      "completed_at": null,
+      "passes": true,
+      "completed_at": "2026-03-05",
       "notes": "N 快捷键已实现"
     }
   ]
