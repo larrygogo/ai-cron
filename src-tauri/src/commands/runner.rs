@@ -103,13 +103,19 @@ pub async fn execute_task(
     triggered_by: TriggerSource,
     app_handle: AppHandle,
     db: Arc<DbConn>,
+    run_id: String,
 ) {
-    let run_id = Uuid::new_v4().to_string();
     let started_at = Utc::now();
 
     // Get last run for context injection
     let last_run: Option<Run> = {
-        let conn = db.0.lock().unwrap();
+        let conn = match db.0.lock() {
+            Ok(c) => c,
+            Err(e) => {
+                log::error!("Failed to lock DB for last run query: {}", e);
+                return;
+            }
+        };
         conn.query_row(
             "SELECT id, task_id, status, exit_code, stdout, started_at, ended_at, duration_ms,
              triggered_by, stderr FROM runs WHERE task_id = ?1 ORDER BY started_at DESC LIMIT 1",
@@ -141,7 +147,13 @@ pub async fn execute_task(
 
     // Insert run record as "running"
     {
-        let conn = db.0.lock().unwrap();
+        let conn = match db.0.lock() {
+            Ok(c) => c,
+            Err(e) => {
+                log::error!("Failed to lock DB for run insert: {}", e);
+                return;
+            }
+        };
         let _ = conn.execute(
             "INSERT INTO runs(id,task_id,status,stdout,stderr,started_at,triggered_by)
              VALUES(?1,?2,'running','','',?3,?4)",
@@ -218,9 +230,12 @@ pub async fn execute_task(
         Ok(mut child) => {
             // Register PID in process registry
             if let Some(pid) = child.id() {
-                PROCESS_REGISTRY.lock().unwrap().insert(run_id.clone(), pid);
+                if let Ok(mut reg) = PROCESS_REGISTRY.lock() {
+                    reg.insert(run_id.clone(), pid);
+                }
             }
 
+            // Safety: stdout/stderr are guaranteed to exist because we set Stdio::piped() above
             let stdout = child.stdout.take().unwrap();
             let stderr = child.stderr.take().unwrap();
 
@@ -291,7 +306,9 @@ pub async fn execute_task(
             }
 
             // Remove from process registry
-            PROCESS_REGISTRY.lock().unwrap().remove(&run_id);
+            if let Ok(mut reg) = PROCESS_REGISTRY.lock() {
+                reg.remove(&run_id);
+            }
         }
         Err(e) => {
             stderr_buf = format!("Failed to spawn process '{}': {}", program, e);
@@ -304,7 +321,13 @@ pub async fn execute_task(
 
     // Persist final run state
     {
-        let conn = db.0.lock().unwrap();
+        let conn = match db.0.lock() {
+            Ok(c) => c,
+            Err(e) => {
+                log::error!("Failed to lock DB for run persist: {}", e);
+                return;
+            }
+        };
         let _ = conn.execute(
             "UPDATE runs SET status=?1, exit_code=?2, stdout=?3, stderr=?4,
              ended_at=?5, duration_ms=?6 WHERE id=?7",
@@ -318,8 +341,13 @@ pub async fn execute_task(
                 run_id
             ],
         );
+        // Contentless FTS5 does not support REPLACE; delete first then insert
         let _ = conn.execute(
-            "INSERT OR REPLACE INTO runs_fts(run_id, task_id, task_name, stdout, stderr)
+            "DELETE FROM runs_fts WHERE run_id = ?1",
+            rusqlite::params![run_id],
+        );
+        let _ = conn.execute(
+            "INSERT INTO runs_fts(run_id, task_id, task_name, stdout, stderr)
              SELECT ?1, ?2, t.name, ?3, ?4 FROM tasks t WHERE t.id = ?2",
             rusqlite::params![run_id, task.id, stdout_buf, stderr_buf],
         );
@@ -366,7 +394,10 @@ fn send_notification(app_handle: &AppHandle, task: &Task, status: &RunStatus) {
     // Read settings to check notification preferences
     if let Some(db) = app_handle.try_state::<DbConn>() {
         let (notify_success, notify_failure) = {
-            let conn = db.0.lock().unwrap();
+            let conn = match db.0.lock() {
+                Ok(c) => c,
+                Err(_) => return,
+            };
             let success: bool = conn
                 .query_row(
                     "SELECT value FROM settings WHERE key = 'notify_on_success'",
@@ -434,12 +465,14 @@ pub async fn trigger_task_now(
 
     let run_id = Uuid::new_v4().to_string();
     let shared_db = db_arc.inner().clone();
+    let run_id_clone = run_id.clone();
 
     tokio::spawn(execute_task(
         task,
         TriggerSource::Manual,
         app_handle,
         shared_db,
+        run_id_clone,
     ));
 
     Ok(run_id)
@@ -454,7 +487,7 @@ pub async fn kill_run(
 ) -> Result<(), String> {
     let pid = PROCESS_REGISTRY
         .lock()
-        .unwrap()
+        .map_err(|e| e.to_string())?
         .remove(&run_id);
 
     if let Some(pid) = pid {

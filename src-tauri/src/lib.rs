@@ -41,18 +41,18 @@ pub fn run() {
             // Ensure directory exists
             std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data dir");
 
-            // Initialize database
+            // Initialize database — primary connection (runs migrations)
             let db_conn = db::init_db(&app_data_dir).expect("Failed to initialize database");
             app.manage(db_conn);
 
-            // Create shared DB connection for scheduler/runner
-            let db_arc = Arc::new(DbConn(std::sync::Mutex::new(
-                rusqlite::Connection::open(format!("{}/ai-cron.db", app_data_dir))
-                    .expect("Second DB connection failed"),
-            )));
-            db_arc.0.lock().unwrap()
-                .execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
-                .ok();
+            // Shared DB connection for scheduler/runner (WAL mode allows concurrent readers)
+            let db_arc = Arc::new(DbConn(std::sync::Mutex::new({
+                let conn = rusqlite::Connection::open(format!("{}/ai-cron.db", app_data_dir))
+                    .expect("Shared DB connection failed");
+                conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
+                    .expect("Failed to set PRAGMAs on shared connection");
+                conn
+            })));
             app.manage(db_arc.clone());
 
             // Initialize and start scheduler

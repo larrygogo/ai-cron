@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Save, RefreshCw, ExternalLink } from "lucide-react";
 import type { AppSettings, ToolInfo } from "../lib/types";
 import * as api from "../lib/tauri";
@@ -15,10 +15,22 @@ export function Settings() {
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.getSettings().then(setSettings);
-    api.detectTools().then(setTools);
+    return () => {
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    api.getSettings().then(setSettings).catch((e) => {
+      console.error("Failed to load settings:", e);
+      setError("Failed to load settings");
+    });
+    api.detectTools().then(setTools).catch(console.error);
   }, []);
 
   const handleSave = async () => {
@@ -27,7 +39,8 @@ export function Settings() {
     try {
       await api.updateSettings(settings);
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSaved(false), 2000);
     } finally {
       setSaving(false);
     }

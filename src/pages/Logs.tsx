@@ -5,6 +5,7 @@ import { RunLogModal } from "../components/runs/RunLogModal";
 import * as api from "../lib/tauri";
 import type { Run, RunWithTaskName, RunStatus } from "../lib/types";
 import { formatDistanceToNow } from "date-fns";
+import { formatDuration } from "../lib/utils";
 
 const LIMIT = 50;
 const STATUS_TABS: { label: string; value: string }[] = [
@@ -48,9 +49,13 @@ export function Logs() {
 
   const handleCleanup = async () => {
     if (!confirm("Clean up old runs based on retention settings?")) return;
-    const count = await api.cleanupOldRuns();
-    fetchData();
-    alert(`Cleaned up ${count} old runs.`);
+    try {
+      const count = await api.cleanupOldRuns();
+      await fetchData();
+      alert(`Cleaned up ${count} old runs.`);
+    } catch (e) {
+      console.error("Cleanup failed:", e);
+    }
   };
 
   const handleExport = (format: "txt" | "json") => {
@@ -74,13 +79,6 @@ export function Logs() {
     a.download = `ai-cron-logs.${format}`;
     a.click();
     URL.revokeObjectURL(url);
-  };
-
-  const formatDuration = (ms?: number) => {
-    if (ms == null) return "—";
-    const s = Math.floor(ms / 1000);
-    if (s >= 60) return `${Math.floor(s / 60)}m${s % 60}s`;
-    return `${s}s`;
   };
 
   return (
@@ -326,7 +324,9 @@ export function Logs() {
         }}
       >
         <span>
-          Showing {offset + 1}-{offset + runs.length}
+          {runs.length === 0
+            ? "No results"
+            : `Showing ${offset + 1}-${offset + runs.length}`}
         </span>
         <div style={{ display: "flex", gap: 6 }}>
           <button

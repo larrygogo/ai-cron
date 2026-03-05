@@ -82,7 +82,9 @@ async fn parse_with_claude(input: &str, settings: &AppSettings) -> Result<TaskDr
         .json(&payload)
         .send()
         .await
-        .map_err(|e| format!("Request failed: {}", e))?;
+        .map_err(|e| format!("Request failed: {}", e))?
+        .error_for_status()
+        .map_err(|e| format!("API error: {}", e))?;
 
     let json: serde_json::Value = resp
         .json()
@@ -130,7 +132,9 @@ async fn parse_with_openai(input: &str, settings: &AppSettings) -> Result<TaskDr
         .json(&payload)
         .send()
         .await
-        .map_err(|e| format!("Request failed: {}", e))?;
+        .map_err(|e| format!("Request failed: {}", e))?
+        .error_for_status()
+        .map_err(|e| format!("API error: {}", e))?;
 
     let json: serde_json::Value = resp
         .json()
@@ -171,7 +175,9 @@ async fn parse_with_ollama(input: &str, settings: &AppSettings) -> Result<TaskDr
         .json(&payload)
         .send()
         .await
-        .map_err(|e| format!("Request failed (is Ollama running?): {}", e))?;
+        .map_err(|e| format!("Request failed (is Ollama running?): {}", e))?
+        .error_for_status()
+        .map_err(|e| format!("API error: {}", e))?;
 
     let json: serde_json::Value = resp
         .json()

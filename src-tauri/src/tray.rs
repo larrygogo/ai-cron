@@ -9,8 +9,11 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let quit = MenuItem::with_id(app, "quit", "退出 AI Cron", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
 
-    TrayIconBuilder::new()
-        .icon(app.default_window_icon().unwrap().clone())
+    let mut builder = TrayIconBuilder::new();
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+    builder
         .menu(&menu)
         .tooltip("AI Cron")
         .on_menu_event(|app, event| match event.id.as_ref() {

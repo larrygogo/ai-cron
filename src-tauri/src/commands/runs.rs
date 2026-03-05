@@ -156,12 +156,12 @@ pub fn cleanup_old_runs(db: State<'_, DbConn>) -> Result<u64, String> {
         )
         .unwrap_or(30);
 
-    let deleted = conn
+    let deleted_by_days = conn
         .execute(
             "DELETE FROM runs WHERE started_at < datetime('now', ?1)",
             [format!("-{} days", days)],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())? as u64;
 
     // Retention per task (keep latest N runs per task)
     let per_task: i64 = conn
@@ -171,16 +171,19 @@ pub fn cleanup_old_runs(db: State<'_, DbConn>) -> Result<u64, String> {
             |row| row.get(0),
         )
         .unwrap_or(100);
+    let per_task = per_task.max(1).min(10000);
 
-    conn.execute_batch(&format!(
-        "DELETE FROM runs WHERE id NOT IN (
-            SELECT id FROM runs r2
-            WHERE r2.task_id = runs.task_id
-            ORDER BY started_at DESC LIMIT {}
-        )",
-        per_task
-    ))
-    .map_err(|e| e.to_string())?;
+    let deleted_per_task = conn
+        .execute(
+            "DELETE FROM runs WHERE id IN (
+                SELECT id FROM (
+                    SELECT id, ROW_NUMBER() OVER (PARTITION BY task_id ORDER BY started_at DESC) AS rn
+                    FROM runs
+                ) WHERE rn > ?1
+            )",
+            rusqlite::params![per_task],
+        )
+        .map_err(|e| e.to_string())? as u64;
 
-    Ok(deleted as u64)
+    Ok(deleted_by_days + deleted_per_task)
 }

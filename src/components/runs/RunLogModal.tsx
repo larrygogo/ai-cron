@@ -3,6 +3,7 @@ import { X, Download } from "lucide-react";
 import AnsiToHtml from "ansi-to-html";
 import { format } from "date-fns";
 import type { Run } from "../../lib/types";
+import { formatDuration } from "../../lib/utils";
 import { useRunStore } from "../../stores/runs";
 
 const ansiConverter = new AnsiToHtml({
@@ -17,13 +18,6 @@ interface Props {
   onClose: () => void;
 }
 
-function formatDuration(ms?: number): string {
-  if (!ms) return "-";
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  return `${Math.floor(s / 60)}m${s % 60}s`;
-}
-
 export function RunLogModal({ run, onClose }: Props) {
   const liveOutput = useRunStore((s) => s.liveOutput[run.id]);
   const [activeTab, setActiveTab] = useState<"stdout" | "stderr">("stdout");
@@ -35,7 +29,7 @@ export function RunLogModal({ run, onClose }: Props) {
     if (logRef.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
-  }, [liveOutput]);
+  }, [liveOutput, activeTab]);
 
   const stdout = isLive ? (liveOutput?.stdout ?? "") : run.stdout;
   const stderr = isLive ? (liveOutput?.stderr ?? "") : run.stderr;

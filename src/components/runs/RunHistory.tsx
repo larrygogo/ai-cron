@@ -4,18 +4,12 @@ import { Play, Terminal } from "lucide-react";
 import { StatusBadge } from "../tasks/StatusBadge";
 import { RunLogModal } from "./RunLogModal";
 import type { Run } from "../../lib/types";
+import { formatDuration } from "../../lib/utils";
 import * as api from "../../lib/tauri";
 
 interface Props {
   taskId: string;
   liveRunId?: string;
-}
-
-function formatDuration(ms?: number): string {
-  if (!ms) return "-";
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  return `${Math.floor(s / 60)}m${s % 60}s`;
 }
 
 export function RunHistory({ taskId, liveRunId }: Props) {
@@ -25,10 +19,12 @@ export function RunHistory({ taskId, liveRunId }: Props) {
 
   useEffect(() => {
     setLoading(true);
-    api.getRuns(taskId, 50).then((r) => {
-      setRuns(r);
-      setLoading(false);
-    });
+    api.getRuns(taskId, 50)
+      .then((r) => {
+        setRuns(r);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, [taskId, liveRunId]);
 
   if (loading) {

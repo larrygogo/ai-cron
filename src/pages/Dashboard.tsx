@@ -14,33 +14,42 @@ export function Dashboard() {
   const { appendOutput, updateRunStatus } = useRunStore();
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [showManualCreate, setShowManualCreate] = useState(false);
   const [liveRunId, setLiveRunId] = useState<string | undefined>();
 
   const selectedTask = tasks.find((t) => t.id === selectedId) ?? null;
 
   // Subscribe to run events
   useEffect(() => {
-    const unsubs: Array<Promise<() => void>> = [
-      api.onRunStarted(({ runId, taskId }) => {
-        if (taskId === selectedId) setLiveRunId(runId);
-      }),
-      api.onRunOutput(({ runId, chunk, stream }) => {
-        const task = tasks.find((t) => t.id === selectedId);
+    const cleanups: (() => void)[] = [];
+
+    const setup = async () => {
+      const unsubStarted = await api.onRunStarted(({ runId, taskId }) => {
+        const currentSelectedId = useTaskStore.getState().selectedId;
+        if (taskId === currentSelectedId) setLiveRunId(runId);
+      });
+      cleanups.push(unsubStarted);
+
+      const unsubOutput = await api.onRunOutput(({ runId, chunk, stream }) => {
+        const state = useTaskStore.getState();
+        const task = state.tasks.find((t) => t.id === state.selectedId);
         if (task) appendOutput(runId, task.id, chunk, stream);
-      }),
-      api.onRunCompleted(({ runId, taskId, status, exitCode, durationMs }) => {
-        if (runId === liveRunId) setLiveRunId(undefined);
+      });
+      cleanups.push(unsubOutput);
+
+      const unsubCompleted = await api.onRunCompleted(({ runId, taskId, status, exitCode, durationMs }) => {
+        setLiveRunId((prev) => (prev === runId ? undefined : prev));
         updateRunStatus(runId, taskId, status, durationMs, exitCode);
-        // Refresh task list to get updated last_run_status
         useTaskStore.getState().fetchTasks();
-      }),
-    ];
+      });
+      cleanups.push(unsubCompleted);
+    };
+
+    setup();
 
     return () => {
-      unsubs.forEach((p) => p.then((unsub) => unsub()));
+      cleanups.forEach((unsub) => unsub());
     };
-  }, [selectedId, liveRunId, tasks]);
+  }, [selectedId]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -97,9 +106,6 @@ export function Dashboard() {
       )}
       {editingTask && (
         <TaskFormModal task={editingTask} onClose={() => setEditingTask(null)} />
-      )}
-      {showManualCreate && (
-        <TaskFormModal onClose={() => setShowManualCreate(false)} />
       )}
     </div>
   );

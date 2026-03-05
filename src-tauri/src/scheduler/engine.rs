@@ -83,8 +83,9 @@ impl SchedulerState {
             let db = db.clone();
             let app_handle = app_handle.clone();
             Box::pin(async move {
-                log::info!("Executing scheduled task: {}", task.name);
-                execute_task(task, TriggerSource::Scheduler, app_handle, db).await;
+                let run_id = uuid::Uuid::new_v4().to_string();
+                log::info!("Executing scheduled task: {} (run_id={})", task.name, run_id);
+                execute_task(task, TriggerSource::Scheduler, app_handle, db, run_id).await;
             })
         })?;
 

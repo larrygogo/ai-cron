@@ -55,8 +55,12 @@ export function TaskDetail({ task, onEdit, liveRunId }: Props) {
 
   const handleDelete = async () => {
     if (!confirm(`Delete task "${task.name}"?`)) return;
-    await api.deleteTask(task.id);
-    removeTaskFromStore(task.id);
+    try {
+      await api.deleteTask(task.id);
+      removeTaskFromStore(task.id);
+    } catch (e) {
+      console.error("Delete failed:", e);
+    }
   };
 
   return (
@@ -194,7 +198,9 @@ export function TaskDetail({ task, onEdit, liveRunId }: Props) {
           <InfoRow label="Webhook">
             <span style={{ fontSize: 11 }}>
               {task.webhook_config.platform} ·{" "}
-              {task.webhook_config.url.slice(0, 40)}…
+              {task.webhook_config.url.length > 40
+                ? `${task.webhook_config.url.slice(0, 40)}…`
+                : task.webhook_config.url}
             </span>
           </InfoRow>
         )}
