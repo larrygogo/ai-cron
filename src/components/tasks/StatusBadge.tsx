@@ -6,12 +6,12 @@ interface Props {
 }
 
 const labels: Record<string, string> = {
-  running: "running",
-  success: "success",
-  failed: "failed",
-  killed: "killed",
-  queued: "queued",
-  disabled: "disabled",
+  running: "运行中",
+  success: "成功",
+  failed: "失败",
+  killed: "已终止",
+  queued: "排队中",
+  disabled: "已禁用",
   unknown: "—",
 };
 

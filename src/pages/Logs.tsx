@@ -9,11 +9,11 @@ import { formatDuration } from "../lib/utils";
 
 const LIMIT = 50;
 const STATUS_TABS: { label: string; value: string }[] = [
-  { label: "All", value: "" },
-  { label: "Running", value: "running" },
-  { label: "Success", value: "success" },
-  { label: "Failed", value: "failed" },
-  { label: "Killed", value: "killed" },
+  { label: "全部", value: "" },
+  { label: "运行中", value: "running" },
+  { label: "成功", value: "success" },
+  { label: "失败", value: "failed" },
+  { label: "已终止", value: "killed" },
 ];
 
 export function Logs() {
@@ -48,11 +48,11 @@ export function Logs() {
   }, [fetchData]);
 
   const handleCleanup = async () => {
-    if (!confirm("Clean up old runs based on retention settings?")) return;
+    if (!confirm("根据保留策略清理旧运行记录？")) return;
     try {
       const count = await api.cleanupOldRuns();
       await fetchData();
-      alert(`Cleaned up ${count} old runs.`);
+      alert(`已清理 ${count} 条旧记录。`);
     } catch (e) {
       console.error("Cleanup failed:", e);
     }
@@ -117,7 +117,7 @@ export function Logs() {
           <input
             className="input"
             style={{ paddingLeft: 26 }}
-            placeholder="Search logs..."
+            placeholder="搜索日志..."
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -164,7 +164,7 @@ export function Logs() {
           <Download size={10} /> TXT
         </button>
         <button className="btn btn-ghost" onClick={handleCleanup} style={{ fontSize: 10 }}>
-          <Trash2 size={10} /> Cleanup
+          <Trash2 size={10} /> 清理
         </button>
         <button className="btn btn-ghost" onClick={fetchData} style={{ fontSize: 10 }}>
           <RefreshCw size={10} />
@@ -174,10 +174,10 @@ export function Logs() {
       {/* Table */}
       <div style={{ flex: 1, overflowY: "auto" }}>
         {loading && runs.length === 0 ? (
-          <div className="empty-state">Loading...</div>
+          <div className="empty-state">加载中...</div>
         ) : runs.length === 0 ? (
           <div className="empty-state">
-            <div style={{ fontSize: 12 }}>No logs found</div>
+            <div style={{ fontSize: 12 }}>暂无日志</div>
           </div>
         ) : (
           <table
@@ -198,22 +198,22 @@ export function Logs() {
                 }}
               >
                 <th style={{ padding: "8px 14px", textAlign: "left" }}>
-                  Status
+                  状态
                 </th>
                 <th style={{ padding: "8px 14px", textAlign: "left" }}>
-                  Task
+                  任务
                 </th>
                 <th style={{ padding: "8px 14px", textAlign: "left" }}>
-                  Started
+                  开始时间
                 </th>
                 <th style={{ padding: "8px 14px", textAlign: "left" }}>
-                  Duration
+                  耗时
                 </th>
                 <th style={{ padding: "8px 14px", textAlign: "left" }}>
-                  Trigger
+                  触发方式
                 </th>
                 <th style={{ padding: "8px 14px", textAlign: "right" }}>
-                  Actions
+                  操作
                 </th>
               </tr>
             </thead>
@@ -300,7 +300,7 @@ export function Logs() {
                       style={{ fontSize: 10, padding: "2px 8px" }}
                       onClick={() => setSelectedRun(item.run)}
                     >
-                      log
+                      日志
                     </button>
                   </td>
                 </tr>
@@ -325,8 +325,8 @@ export function Logs() {
       >
         <span>
           {runs.length === 0
-            ? "No results"
-            : `Showing ${offset + 1}-${offset + runs.length}`}
+            ? "无结果"
+            : `显示 ${offset + 1}-${offset + runs.length}`}
         </span>
         <div style={{ display: "flex", gap: 6 }}>
           <button
@@ -335,7 +335,7 @@ export function Logs() {
             disabled={offset === 0}
             onClick={() => setOffset(Math.max(0, offset - LIMIT))}
           >
-            ← Prev
+            ← 上一页
           </button>
           <button
             className="btn btn-ghost"
@@ -343,7 +343,7 @@ export function Logs() {
             disabled={runs.length < LIMIT}
             onClick={() => setOffset(offset + LIMIT)}
           >
-            Next →
+            下一页 →
           </button>
         </div>
       </div>

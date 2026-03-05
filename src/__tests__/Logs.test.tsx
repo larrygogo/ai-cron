@@ -46,7 +46,7 @@ describe("Logs", () => {
     render(<Logs />);
 
     await waitFor(() => {
-      expect(screen.getByText("No logs found")).toBeInTheDocument();
+      expect(screen.getByText("暂无日志")).toBeInTheDocument();
     });
   });
 
@@ -87,7 +87,7 @@ describe("Logs", () => {
 
     const callCountAfterInit = vi.mocked(api.getAllRuns).mock.calls.length;
 
-    const searchInput = screen.getByPlaceholderText("Search logs...");
+    const searchInput = screen.getByPlaceholderText("搜索日志...");
     fireEvent.change(searchInput, { target: { value: "test" } });
 
     // Advance past debounce
@@ -115,7 +115,7 @@ describe("Logs", () => {
     vi.clearAllMocks();
     vi.mocked(api.getAllRuns).mockResolvedValue([]);
 
-    fireEvent.click(screen.getByText("Failed"));
+    fireEvent.click(screen.getByText("失败"));
 
     await waitFor(() => {
       expect(api.getAllRuns).toHaveBeenCalledWith(

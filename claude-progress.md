@@ -12,6 +12,8 @@
 
 ## 最近完成（最新在前）
 
+- [2026-03-05] feat: 全量中文化 + Settings 滚动条修复 — 13 个前端组件英文文本翻译为简体中文，Settings 页滚动容器与内容容器分离，滚动条移至窗口右边缘，测试文件同步更新
+- [2026-03-05] fix: 修复 16 个 Critical/High + 3 个 Medium 代码质量问题 — run_id 同步、cleanup SQL 注入修复、unwrap 安全化、事件监听竞态、错误处理、formatDuration 复用等
 - [2026-03-05] test: 三层验证方案 Step 1-3 — 前端 25 tests (Vitest + React Testing Library) + 后端 26 tests (cargo test + 内存 SQLite)，共 51 个测试全部通过
 - [2026-03-05] feature #2-#12: Phase 2-4 全功能实现 — TaskFormModal 编辑弹窗、调度引擎 hot-reload、进程 kill、全局 Logs 页、ToolStatusBar、系统托盘、桌面通知、键盘快捷键、Toast
 - [2026-03-05] feature #1: 项目初始化与基础架构搭建 — Tauri 2.0 + React + SQLite + 全前后端骨架
@@ -20,8 +22,9 @@
 
 ## 下一步任务
 
-所有计划功能已完成，前端+后端单元测试已添加。后续可考虑：
+所有计划功能已完成，前端+后端单元测试已添加，代码质量审查修复完成。后续可考虑：
 - [x] 添加单元测试（51 tests 已完成）
+- [x] 代码质量审查修复（19 个问题已修复）
 - [ ] E2E 测试（WebdriverIO + tauri-driver，需 build 后运行）
 - [ ] 端到端功能测试（cargo tauri dev 验证所有流程）
 - [ ] 发布 v0.1.0 版本

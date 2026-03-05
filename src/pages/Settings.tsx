@@ -52,19 +52,20 @@ export function Settings() {
   if (!settings) {
     return (
       <div className="empty-state">
-        <span style={{ fontSize: 12 }}>Loading settings...</span>
+        <span style={{ fontSize: 12 }}>加载设置...</span>
       </div>
     );
   }
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "24px 32px", maxWidth: 640 }}>
+    <div style={{ flex: 1, overflowY: "auto" }}>
+      <div style={{ padding: "24px 32px", maxWidth: 640 }}>
       <h2 style={{ fontSize: 14, marginBottom: 24, color: "var(--text-primary)" }}>
-        Settings
+        设置
       </h2>
 
       {/* AI Tools detected */}
-      <Section title="AI Tools">
+      <Section title="AI 工具">
         {tools.map((tool) => (
           <div
             key={tool.name}
@@ -99,7 +100,7 @@ export function Settings() {
                 style={{ fontSize: 11 }}
                 onClick={() => openUrl(tool.install_url)}
               >
-                <ExternalLink size={10} /> Install
+                <ExternalLink size={10} /> 安装
               </button>
             )}
           </div>
@@ -109,14 +110,14 @@ export function Settings() {
           style={{ marginTop: 10, fontSize: 11 }}
           onClick={() => api.detectTools().then(setTools)}
         >
-          <RefreshCw size={10} /> Re-detect
+          <RefreshCw size={10} /> 重新检测
         </button>
       </Section>
 
       {/* NL Provider */}
-      <Section title="Natural Language Provider">
+      <Section title="自然语言服务">
         <div>
-          <label className="label">Provider</label>
+          <label className="label">服务商</label>
           <select
             className="input"
             value={settings.nl_provider}
@@ -164,7 +165,7 @@ export function Settings() {
         )}
 
         <div>
-          <label className="label">Model (optional)</label>
+          <label className="label">模型 (可选)</label>
           <input
             className="input"
             value={settings.nl_model}
@@ -181,10 +182,10 @@ export function Settings() {
       </Section>
 
       {/* Log retention */}
-      <Section title="Log Retention">
+      <Section title="日志保留">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div>
-            <label className="label">Keep logs for (days)</label>
+            <label className="label">日志保留天数</label>
             <input
               className="input"
               type="number"
@@ -197,7 +198,7 @@ export function Settings() {
             />
           </div>
           <div>
-            <label className="label">Max runs per task</label>
+            <label className="label">每任务最大记录数</label>
             <input
               className="input"
               type="number"
@@ -213,14 +214,14 @@ export function Settings() {
       </Section>
 
       {/* Notifications */}
-      <Section title="Notifications">
+      <Section title="通知">
         <ToggleRow
-          label="Notify on success"
+          label="成功时通知"
           checked={settings.notify_on_success}
           onChange={(v) => patch({ notify_on_success: v })}
         />
         <ToggleRow
-          label="Notify on failure"
+          label="失败时通知"
           checked={settings.notify_on_failure}
           onChange={(v) => patch({ notify_on_failure: v })}
         />
@@ -230,8 +231,9 @@ export function Settings() {
       <div style={{ marginTop: 24 }}>
         <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
           <Save size={11} />
-          {saved ? "Saved!" : saving ? "Saving..." : "Save settings"}
+          {saved ? "已保存!" : saving ? "保存中..." : "保存设置"}
         </button>
+      </div>
       </div>
     </div>
   );

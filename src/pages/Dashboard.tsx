@@ -62,7 +62,7 @@ export function Dashboard() {
           if (selectedTask) api.triggerTaskNow(selectedTask.id).catch(console.error);
           break;
         case "Delete":
-          if (selectedTask && confirm(`Delete task "${selectedTask.name}"?`)) {
+          if (selectedTask && confirm(`确定删除任务 "${selectedTask.name}"？`)) {
             api.deleteTask(selectedTask.id).then(() => {
               useTaskStore.getState().removeTaskFromStore(selectedTask.id);
             });
@@ -116,13 +116,13 @@ function EmptyDetail({ onAdd }: { onAdd: () => void }) {
     <div className="empty-state" style={{ flex: 1 }}>
       <Bot size={32} style={{ color: "var(--text-muted)" }} />
       <div>
-        <div style={{ fontSize: 13, marginBottom: 4 }}>No task selected</div>
+        <div style={{ fontSize: 13, marginBottom: 4 }}>未选择任务</div>
         <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          Select a task from the sidebar or create a new one
+          从侧边栏选择一个任务，或创建新任务
         </div>
       </div>
       <button className="btn btn-ghost" onClick={onAdd}>
-        Add first task <kbd style={{ fontSize: 10, opacity: 0.6 }}>N</kbd>
+        添加第一个任务 <kbd style={{ fontSize: 10, opacity: 0.6 }}>N</kbd>
       </button>
     </div>
   );

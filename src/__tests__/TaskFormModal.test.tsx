@@ -45,7 +45,7 @@ describe("TaskFormModal", () => {
   it("renders in create mode with correct title", () => {
     render(<TaskFormModal onClose={onClose} />);
     // Title is in a span, button also says "Create Task" — use getAllByText
-    const elements = screen.getAllByText("Create Task");
+    const elements = screen.getAllByText("创建任务");
     expect(elements.length).toBeGreaterThanOrEqual(2); // header + button
     expect(elements[0]).toBeInTheDocument();
   });
@@ -54,27 +54,27 @@ describe("TaskFormModal", () => {
     const task = mockTask({ name: "My Task", prompt: "Test prompt" });
     render(<TaskFormModal task={task} onClose={onClose} />);
 
-    expect(screen.getByText("Edit Task")).toBeInTheDocument();
+    expect(screen.getByText("编辑任务")).toBeInTheDocument();
     expect(screen.getByDisplayValue("My Task")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Test prompt")).toBeInTheDocument();
-    expect(screen.getByText("Save Changes")).toBeInTheDocument();
+    expect(screen.getByText("保存修改")).toBeInTheDocument();
   });
 
   it("shows validation error when required fields are empty", async () => {
     render(<TaskFormModal onClose={onClose} />);
 
     // Clear default cron and leave name/prompt empty
-    const nameInput = screen.getByPlaceholderText("My daily task");
+    const nameInput = screen.getByPlaceholderText("我的日常任务");
     fireEvent.change(nameInput, { target: { value: "" } });
 
     // Find the create/submit button
     const buttons = screen.getAllByRole("button");
-    const submitBtn = buttons.find((b) => b.textContent === "Create Task");
+    const submitBtn = buttons.find((b) => b.textContent === "创建任务");
     fireEvent.click(submitBtn!);
 
     await waitFor(() => {
       expect(
-        screen.getByText("Name, Cron expression, and Prompt are required.")
+        screen.getByText("名称、Cron 表达式和提示词为必填项。")
       ).toBeInTheDocument();
     });
     expect(api.createTask).not.toHaveBeenCalled();
@@ -86,11 +86,11 @@ describe("TaskFormModal", () => {
 
     render(<TaskFormModal onClose={onClose} />);
 
-    fireEvent.change(screen.getByPlaceholderText("My daily task"), {
+    fireEvent.change(screen.getByPlaceholderText("我的日常任务"), {
       target: { value: "New Task" },
     });
     fireEvent.change(
-      screen.getByPlaceholderText("Describe what the AI agent should do..."),
+      screen.getByPlaceholderText("描述 AI 代理应执行的任务..."),
       { target: { value: "Run tests" } }
     );
     fireEvent.change(screen.getByPlaceholderText("/path/to/project"), {
@@ -98,7 +98,7 @@ describe("TaskFormModal", () => {
     });
 
     const buttons = screen.getAllByRole("button");
-    const submitBtn = buttons.find((b) => b.textContent === "Create Task");
+    const submitBtn = buttons.find((b) => b.textContent === "创建任务");
     fireEvent.click(submitBtn!);
 
     await waitFor(() => {
@@ -117,7 +117,7 @@ describe("TaskFormModal", () => {
     fireEvent.change(screen.getByDisplayValue("Test Task"), {
       target: { value: "Updated" },
     });
-    fireEvent.click(screen.getByText("Save Changes"));
+    fireEvent.click(screen.getByText("保存修改"));
 
     await waitFor(() => {
       expect(api.updateTask).toHaveBeenCalledWith("t1", expect.any(Object));
@@ -127,7 +127,7 @@ describe("TaskFormModal", () => {
 
   it("calls onClose when Cancel is clicked", () => {
     render(<TaskFormModal onClose={onClose} />);
-    fireEvent.click(screen.getByText("Cancel"));
+    fireEvent.click(screen.getByText("取消"));
     expect(onClose).toHaveBeenCalled();
   });
 });

@@ -51,7 +51,7 @@ export function AddTaskModal({ onClose }: Props) {
     setSaving(true);
     try {
       const req: CreateTaskRequest = {
-        name: draft.name || "Unnamed task",
+        name: draft.name || "未命名任务",
         cron_expression: draft.cron_expression,
         cron_human: draft.cron_human,
         ai_tool: draft.ai_tool,
@@ -81,7 +81,7 @@ export function AddTaskModal({ onClose }: Props) {
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Sparkles size={14} style={{ color: "var(--accent)" }} />
             <span style={{ fontSize: 13 }}>
-              {step === "nl" ? "Add task" : "Review & confirm"}
+              {step === "nl" ? "添加任务" : "确认任务"}
             </span>
           </div>
           <button className="btn btn-ghost" style={{ padding: "3px 8px" }} onClick={onClose}>
@@ -94,14 +94,14 @@ export function AddTaskModal({ onClose }: Props) {
           <>
             <div className="modal-body">
               <p style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-                Describe your task in natural language. AI will generate the schedule and prompt.
+                用自然语言描述你的任务，AI 将自动生成调度计划和提示词。
               </p>
               <div>
-                <label className="label">What should be automated?</label>
+                <label className="label">需要自动化什么？</label>
                 <textarea
                   className="input"
                   style={{ minHeight: 100 }}
-                  placeholder='e.g. "Every weekday at 9am, check my main branch for failing tests and fix them"'
+                  placeholder='例如："每个工作日早上 9 点，检查主分支的失败测试并修复"'
                   value={nlInput}
                   onChange={(e) => setNlInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -118,7 +118,7 @@ export function AddTaskModal({ onClose }: Props) {
             </div>
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={handleSkipToManual}>
-                Manual setup
+                手动配置
               </button>
               <button
                 className="btn btn-primary"
@@ -126,7 +126,7 @@ export function AddTaskModal({ onClose }: Props) {
                 disabled={!nlInput.trim() || parsing}
               >
                 {parsing ? <Loader size={11} className="spin" /> : <Sparkles size={11} />}
-                {parsing ? "Parsing..." : "Generate task"}
+                {parsing ? "解析中..." : "生成任务"}
               </button>
             </div>
           </>
@@ -138,7 +138,7 @@ export function AddTaskModal({ onClose }: Props) {
             <div className="modal-body">
               {/* Name */}
               <div>
-                <label className="label">Task name</label>
+                <label className="label">任务名称</label>
                 <input
                   className="input"
                   value={draft.name}
@@ -151,7 +151,7 @@ export function AddTaskModal({ onClose }: Props) {
               {/* Cron */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div>
-                  <label className="label">Cron expression</label>
+                  <label className="label">Cron 表达式</label>
                   <input
                     className="input"
                     value={draft.cron_expression}
@@ -160,7 +160,7 @@ export function AddTaskModal({ onClose }: Props) {
                   />
                 </div>
                 <div>
-                  <label className="label">Schedule (human)</label>
+                  <label className="label">调度描述</label>
                   <input
                     className="input"
                     value={draft.cron_human}
@@ -172,7 +172,7 @@ export function AddTaskModal({ onClose }: Props) {
 
               {/* AI Tool */}
               <div>
-                <label className="label">AI Tool</label>
+                <label className="label">AI 工具</label>
                 <select
                   className="input"
                   value={draft.ai_tool}
@@ -186,19 +186,19 @@ export function AddTaskModal({ onClose }: Props) {
 
               {/* Prompt */}
               <div>
-                <label className="label">Prompt</label>
+                <label className="label">提示词</label>
                 <textarea
                   className="input"
                   style={{ minHeight: 100 }}
                   value={draft.prompt}
                   onChange={(e) => setDraft({ ...draft, prompt: e.target.value })}
-                  placeholder="Task description for the AI agent..."
+                  placeholder="AI 代理的任务描述..."
                 />
               </div>
 
               {/* Working directory */}
               <div>
-                <label className="label">Working directory</label>
+                <label className="label">工作目录</label>
                 <input
                   className="input"
                   value={draft.suggested_directory}
@@ -210,14 +210,14 @@ export function AddTaskModal({ onClose }: Props) {
 
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setStep("nl")}>
-                Back
+                返回
               </button>
               <button
                 className="btn btn-primary"
                 onClick={handleSave}
                 disabled={saving || !draft.name.trim()}
               >
-                {saving ? "Saving..." : "Create task"}
+                {saving ? "保存中..." : "创建任务"}
                 <ChevronRight size={11} />
               </button>
             </div>

@@ -16,7 +16,7 @@ export function ToolStatusBar() {
       {tools.map((t) => (
         <div
           key={t.name}
-          title={`${t.label}: ${t.available ? `v${t.version ?? "?"}` : "not installed"}`}
+          title={`${t.label}: ${t.available ? `v${t.version ?? "?"}` : "未安装"}`}
           style={{ display: "flex", alignItems: "center", gap: 3 }}
         >
           <span

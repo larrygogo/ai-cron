@@ -22,7 +22,7 @@ export function NextRunsPreview({ cronExpr }: Props) {
   if (error) {
     return (
       <div style={{ fontSize: 11, color: "var(--accent-red)" }}>
-        Invalid cron: {error}
+        无效的 Cron 表达式：{error}
       </div>
     );
   }
@@ -52,7 +52,7 @@ export function NextRunsPreview({ cronExpr }: Props) {
                 borderRadius: 3,
               }}
             >
-              next
+              下次
             </span>
           )}
         </div>

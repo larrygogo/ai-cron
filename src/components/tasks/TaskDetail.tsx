@@ -54,7 +54,7 @@ export function TaskDetail({ task, onEdit, liveRunId }: Props) {
   };
 
   const handleDelete = async () => {
-    if (!confirm(`Delete task "${task.name}"?`)) return;
+    if (!confirm(`确定删除任务 "${task.name}"？`)) return;
     try {
       await api.deleteTask(task.id);
       removeTaskFromStore(task.id);
@@ -104,7 +104,7 @@ export function TaskDetail({ task, onEdit, liveRunId }: Props) {
             style={{ fontSize: 11 }}
           >
             <Play size={11} />
-            {running ? "Running..." : "Run now"}
+            {running ? "运行中..." : "立即运行"}
           </button>
           <button
             className="btn btn-ghost"
@@ -112,7 +112,7 @@ export function TaskDetail({ task, onEdit, liveRunId }: Props) {
             style={{ fontSize: 11 }}
           >
             <Pencil size={11} />
-            Edit
+            编辑
           </button>
           <div
             style={{ display: "flex", alignItems: "center", gap: 6 }}
@@ -135,12 +135,12 @@ export function TaskDetail({ task, onEdit, liveRunId }: Props) {
 
         {/* Info grid */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 20px" }}>
-          <InfoRow label="Tool">
+          <InfoRow label="工具">
             <code style={{ fontSize: 11.5, color: "var(--accent-blue)" }}>
               {toolLabels[task.ai_tool] ?? task.ai_tool}
             </code>
           </InfoRow>
-          <InfoRow label="Schedule">
+          <InfoRow label="调度">
             <span style={{ fontSize: 12 }}>
               {task.cron_human || task.cron_expression}
             </span>
@@ -154,20 +154,20 @@ export function TaskDetail({ task, onEdit, liveRunId }: Props) {
               ({task.cron_expression})
             </code>
           </InfoRow>
-          <InfoRow label="Directory">
+          <InfoRow label="目录">
             <code style={{ fontSize: 11 }}>{task.working_directory || "—"}</code>
           </InfoRow>
-          <InfoRow label="Security">
+          <InfoRow label="安全">
             <span style={{ fontSize: 11.5 }}>
-              {task.restrict_network && "no-network "}
-              {task.restrict_filesystem && "no-fs "}
-              {!task.restrict_network && !task.restrict_filesystem && "unrestricted"}
+              {task.restrict_network && "禁止网络 "}
+              {task.restrict_filesystem && "禁止文件系统 "}
+              {!task.restrict_network && !task.restrict_filesystem && "不限制"}
             </span>
           </InfoRow>
           {task.inject_context && (
-            <InfoRow label="Context">
+            <InfoRow label="上下文">
               <span style={{ fontSize: 11, color: "var(--accent)" }}>
-                injecting time + last run
+                注入时间 + 上次运行信息
               </span>
             </InfoRow>
           )}
@@ -175,7 +175,7 @@ export function TaskDetail({ task, onEdit, liveRunId }: Props) {
 
         {/* Prompt */}
         <div>
-          <div className="label">Prompt</div>
+          <div className="label">提示词</div>
           <div
             style={{
               background: "var(--bg-input)",
@@ -207,19 +207,19 @@ export function TaskDetail({ task, onEdit, liveRunId }: Props) {
 
         {/* Next runs */}
         <div>
-          <div className="label" style={{ marginBottom: 8 }}>Next runs</div>
+          <div className="label" style={{ marginBottom: 8 }}>下次运行</div>
           {task.enabled ? (
             <NextRunsPreview cronExpr={task.cron_expression} />
           ) : (
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              Task disabled
+              任务已禁用
             </span>
           )}
         </div>
 
         {/* Run history */}
         <div>
-          <div className="label" style={{ marginBottom: 8 }}>Run history</div>
+          <div className="label" style={{ marginBottom: 8 }}>运行历史</div>
           <RunHistory taskId={task.id} liveRunId={liveRunId} />
         </div>
       </div>

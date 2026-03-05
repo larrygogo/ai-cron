@@ -57,7 +57,7 @@ export function TaskFormModal({ task, onClose }: Props) {
 
   const handleSave = async () => {
     if (!name.trim() || !cronExpr.trim() || !prompt.trim()) {
-      setError("Name, Cron expression, and Prompt are required.");
+      setError("名称、Cron 表达式和提示词为必填项。");
       return;
     }
     setSaving(true);
@@ -125,7 +125,7 @@ export function TaskFormModal({ task, onClose }: Props) {
       >
         <div className="modal-header">
           <span style={{ fontSize: 13, fontWeight: 600 }}>
-            {isEdit ? "Edit Task" : "Create Task"}
+            {isEdit ? "编辑任务" : "创建任务"}
           </span>
           <button
             className="btn btn-ghost"
@@ -139,19 +139,19 @@ export function TaskFormModal({ task, onClose }: Props) {
         <div className="modal-body">
           {/* Name */}
           <div>
-            <label className="label">Name</label>
+            <label className="label">名称</label>
             <input
               className="input"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="My daily task"
+              placeholder="我的日常任务"
             />
           </div>
 
           {/* Cron */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
-              <label className="label">Cron Expression</label>
+              <label className="label">Cron 表达式</label>
               <input
                 className="input"
                 value={cronExpr}
@@ -160,12 +160,12 @@ export function TaskFormModal({ task, onClose }: Props) {
               />
             </div>
             <div>
-              <label className="label">Human Readable</label>
+              <label className="label">调度描述</label>
               <input
                 className="input"
                 value={cronHuman}
                 onChange={(e) => setCronHuman(e.target.value)}
-                placeholder="Every day at 9:00"
+                placeholder="每天 09:00"
               />
             </div>
           </div>
@@ -173,14 +173,14 @@ export function TaskFormModal({ task, onClose }: Props) {
           {/* Cron preview */}
           {cronExpr.trim() && (
             <div>
-              <label className="label">Next Runs Preview</label>
+              <label className="label">下次运行预览</label>
               <NextRunsPreview cronExpr={cronExpr} />
             </div>
           )}
 
           {/* AI Tool */}
           <div>
-            <label className="label">AI Tool</label>
+            <label className="label">AI 工具</label>
             <select
               className="input"
               value={aiTool}
@@ -189,7 +189,7 @@ export function TaskFormModal({ task, onClose }: Props) {
               <option value="claude">Claude (claude -p)</option>
               <option value="opencode">OpenCode</option>
               <option value="codex">Codex (full-auto)</option>
-              <option value="custom">Custom Command</option>
+              <option value="custom">自定义命令</option>
             </select>
           </div>
 
@@ -197,7 +197,7 @@ export function TaskFormModal({ task, onClose }: Props) {
           {aiTool === "custom" && (
             <div>
               <label className="label">
-                Command Template{" "}
+                命令模板{" "}
                 <span style={{ textTransform: "none", color: "var(--text-muted)" }}>
                   (use &#123;prompt&#125;, &#123;cwd&#125;, &#123;timestamp&#125;)
                 </span>
@@ -213,19 +213,19 @@ export function TaskFormModal({ task, onClose }: Props) {
 
           {/* Prompt */}
           <div>
-            <label className="label">Prompt</label>
+            <label className="label">提示词</label>
             <textarea
               className="input"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={4}
-              placeholder="Describe what the AI agent should do..."
+              placeholder="描述 AI 代理应执行的任务..."
             />
           </div>
 
           {/* Working directory */}
           <div>
-            <label className="label">Working Directory</label>
+            <label className="label">工作目录</label>
             <input
               className="input"
               value={workDir}
@@ -243,22 +243,22 @@ export function TaskFormModal({ task, onClose }: Props) {
             }}
           >
             <ToggleRow
-              label="Enabled"
+              label="启用"
               checked={enabled}
               onChange={setEnabled}
             />
             <ToggleRow
-              label="Inject Context"
+              label="注入上下文"
               checked={injectContext}
               onChange={setInjectContext}
             />
             <ToggleRow
-              label="Restrict Network"
+              label="限制网络"
               checked={restrictNetwork}
               onChange={setRestrictNetwork}
             />
             <ToggleRow
-              label="Restrict Filesystem"
+              label="限制文件系统"
               checked={restrictFs}
               onChange={setRestrictFs}
             />
@@ -275,7 +275,7 @@ export function TaskFormModal({ task, onClose }: Props) {
               }}
             >
               <label className="label" style={{ marginBottom: 0 }}>
-                Environment Variables
+                环境变量
               </label>
               <button
                 className="btn btn-ghost"
@@ -284,7 +284,7 @@ export function TaskFormModal({ task, onClose }: Props) {
                   setEnvPairs([...envPairs, { key: "", value: "" }])
                 }
               >
-                <Plus size={10} /> Add
+                <Plus size={10} /> 添加
               </button>
             </div>
             {envPairs.map((pair, i) => (
@@ -341,7 +341,7 @@ export function TaskFormModal({ task, onClose }: Props) {
               }}
             >
               <label className="label" style={{ marginBottom: 0 }}>
-                Webhook Notification
+                Webhook 通知
               </label>
               <Toggle checked={webhookEnabled} onChange={setWebhookEnabled} />
             </div>
@@ -365,7 +365,7 @@ export function TaskFormModal({ task, onClose }: Props) {
                   }}
                 >
                   <div>
-                    <label className="label">Platform</label>
+                    <label className="label">平台</label>
                     <select
                       className="input"
                       value={webhook.platform}
@@ -376,8 +376,8 @@ export function TaskFormModal({ task, onClose }: Props) {
                         })
                       }
                     >
-                      <option value="generic">Generic</option>
-                      <option value="feishu">Feishu</option>
+                      <option value="generic">通用</option>
+                      <option value="feishu">飞书</option>
                     </select>
                   </div>
                   <div>
@@ -400,28 +400,28 @@ export function TaskFormModal({ task, onClose }: Props) {
                   }}
                 >
                   <ToggleRow
-                    label="On Start"
+                    label="开始时"
                     checked={webhook.on_start}
                     onChange={(v) =>
                       setWebhook({ ...webhook, on_start: v })
                     }
                   />
                   <ToggleRow
-                    label="On Success"
+                    label="成功时"
                     checked={webhook.on_success}
                     onChange={(v) =>
                       setWebhook({ ...webhook, on_success: v })
                     }
                   />
                   <ToggleRow
-                    label="On Failure"
+                    label="失败时"
                     checked={webhook.on_failure}
                     onChange={(v) =>
                       setWebhook({ ...webhook, on_failure: v })
                     }
                   />
                   <ToggleRow
-                    label="On Killed"
+                    label="终止时"
                     checked={webhook.on_killed}
                     onChange={(v) =>
                       setWebhook({ ...webhook, on_killed: v })
@@ -450,14 +450,14 @@ export function TaskFormModal({ task, onClose }: Props) {
 
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            取消
           </button>
           <button
             className="btn btn-primary"
             onClick={handleSave}
             disabled={saving}
           >
-            {saving ? "Saving..." : isEdit ? "Save Changes" : "Create Task"}
+            {saving ? "保存中..." : isEdit ? "保存修改" : "创建任务"}
           </button>
         </div>
       </div>

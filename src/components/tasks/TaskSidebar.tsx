@@ -45,7 +45,7 @@ export function TaskSidebar({ onAddTask }: Props) {
             letterSpacing: "0.08em",
           }}
         >
-          Tasks{" "}
+          任务{" "}
           {tasks.length > 0 && (
             <span style={{ color: "var(--text-secondary)" }}>
               ({tasks.length})
@@ -57,7 +57,7 @@ export function TaskSidebar({ onAddTask }: Props) {
             className="btn btn-ghost"
             style={{ padding: "3px 6px", border: "none" }}
             onClick={() => fetchTasks()}
-            title="Refresh"
+            title="刷新"
           >
             <RefreshCw size={12} />
           </button>
@@ -65,7 +65,7 @@ export function TaskSidebar({ onAddTask }: Props) {
             className="btn btn-ghost"
             style={{ padding: "3px 6px", border: "none" }}
             onClick={onAddTask}
-            title="New task (N)"
+            title="新建任务 (N)"
           >
             <Plus size={12} />
           </button>
@@ -76,14 +76,14 @@ export function TaskSidebar({ onAddTask }: Props) {
       <div style={{ flex: 1, overflowY: "auto" }}>
         {loading && tasks.length === 0 && (
           <div className="empty-state" style={{ padding: "30px 14px" }}>
-            <span style={{ fontSize: 11 }}>Loading...</span>
+            <span style={{ fontSize: 11 }}>加载中...</span>
           </div>
         )}
         {!loading && tasks.length === 0 && (
           <div className="empty-state" style={{ padding: "30px 14px" }}>
-            <span style={{ fontSize: 11 }}>No tasks yet</span>
+            <span style={{ fontSize: 11 }}>暂无任务</span>
             <button className="btn btn-ghost" onClick={onAddTask}>
-              <Plus size={11} /> Add task
+              <Plus size={11} /> 添加任务
             </button>
           </div>
         )}
@@ -109,7 +109,7 @@ export function TaskSidebar({ onAddTask }: Props) {
           style={{ width: "100%", justifyContent: "center" }}
           onClick={onAddTask}
         >
-          <Plus size={12} /> Add task
+          <Plus size={12} /> 添加任务
         </button>
       </div>
     </div>

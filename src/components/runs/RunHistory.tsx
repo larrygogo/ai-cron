@@ -30,7 +30,7 @@ export function RunHistory({ taskId, liveRunId }: Props) {
   if (loading) {
     return (
       <div style={{ padding: "20px 0", color: "var(--text-muted)", fontSize: 12 }}>
-        Loading history...
+        加载历史...
       </div>
     );
   }
@@ -39,7 +39,7 @@ export function RunHistory({ taskId, liveRunId }: Props) {
     return (
       <div className="empty-state" style={{ padding: "24px 0" }}>
         <Play size={20} />
-        <span style={{ fontSize: 11 }}>No runs yet</span>
+        <span style={{ fontSize: 11 }}>暂无运行记录</span>
       </div>
     );
   }
@@ -70,7 +70,7 @@ export function RunHistory({ taskId, liveRunId }: Props) {
               <span
                 style={{ color: "var(--text-muted)", minWidth: 40 }}
               >
-                {isLive ? "live" : formatDuration(run.duration_ms)}
+                {isLive ? "实时" : formatDuration(run.duration_ms)}
               </span>
               <span
                 style={{
@@ -89,10 +89,10 @@ export function RunHistory({ taskId, liveRunId }: Props) {
                 className="btn btn-ghost"
                 style={{ padding: "2px 7px", fontSize: 10 }}
                 onClick={() => setViewRun(run)}
-                title="View log"
+                title="查看日志"
               >
                 <Terminal size={10} />
-                log
+                日志
               </button>
             </div>
           );

@@ -65,19 +65,19 @@ export default function App() {
             active={page === "dashboard"}
             onClick={() => setPage("dashboard")}
             icon={<AlignLeft size={11} />}
-            label="Tasks"
+            label="任务"
           />
           <NavBtn
             active={page === "logs"}
             onClick={() => setPage("logs")}
             icon={<FileText size={11} />}
-            label="Logs"
+            label="日志"
           />
           <NavBtn
             active={page === "settings"}
             onClick={() => setPage("settings")}
             icon={<SettingsIcon size={11} />}
-            label="Settings"
+            label="设置"
           />
         </div>
 

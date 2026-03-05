@@ -65,7 +65,7 @@ export function RunLogModal({ run, onClose }: Props) {
         <div className="modal-header">
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 12, color: "var(--text-primary)" }}>
-              Run log
+              运行日志
             </span>
             <span
               style={{
@@ -95,7 +95,7 @@ export function RunLogModal({ run, onClose }: Props) {
                     : "var(--text-secondary)",
               }}
             >
-              {isLive ? "● live" : run.status}
+              {isLive ? "● 实时" : run.status}
             </span>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -107,7 +107,7 @@ export function RunLogModal({ run, onClose }: Props) {
               className="btn btn-ghost"
               style={{ padding: "3px 8px" }}
               onClick={handleDownload}
-              title="Download log"
+              title="下载日志"
             >
               <Download size={11} />
             </button>
@@ -181,7 +181,7 @@ export function RunLogModal({ run, onClose }: Props) {
           dangerouslySetInnerHTML={{
             __html: activeContent
               ? renderHtml(activeContent)
-              : '<span style="color: #555">No output</span>',
+              : '<span style="color: #555">暂无输出</span>',
           }}
         />
       </div>
