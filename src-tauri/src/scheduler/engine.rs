@@ -1,5 +1,5 @@
 use crate::commands::runner::execute_task;
-use crate::commands::tasks::row_to_task_pub;
+use crate::commands::tasks::row_to_task;
 use crate::db::DbConn;
 use crate::models::run::TriggerSource;
 use std::collections::HashMap;
@@ -34,7 +34,8 @@ impl SchedulerState {
             let mut stmt = match conn.prepare(
                 "SELECT id, name, cron_expression, cron_human, ai_tool, custom_command, prompt,
                  working_directory, enabled, inject_context, restrict_network, restrict_filesystem,
-                 env_vars, webhook_config, created_at, updated_at, last_run_at, last_run_status
+                 env_vars, webhook_config, created_at, updated_at, last_run_at, last_run_status,
+                 execution_plan, consecutive_failures, allowed_tools, skip_permissions
                  FROM tasks WHERE enabled = 1",
             ) {
                 Ok(s) => s,
@@ -45,7 +46,7 @@ impl SchedulerState {
             };
 
             match stmt
-                .query_map([], row_to_task_pub)
+                .query_map([], row_to_task)
                 .map(|iter| iter.filter_map(|r| r.ok()).collect::<Vec<_>>())
             {
                 Ok(tasks) => tasks,
@@ -78,7 +79,14 @@ impl SchedulerState {
         let cron_expr = task.cron_expression.clone();
         let task_name = task.name.clone();
 
-        let job = Job::new_async(cron_expr.as_str(), move |_uuid, _lock| {
+        // tokio-cron-scheduler expects 6-7 fields (with seconds); prepend "0" for standard 5-field cron
+        let scheduler_expr = if cron_expr.split_whitespace().count() == 5 {
+            format!("0 {}", cron_expr)
+        } else {
+            cron_expr.clone()
+        };
+
+        let job = Job::new_async(scheduler_expr.as_str(), move |_uuid, _lock| {
             let task = task.clone();
             let db = db.clone();
             let app_handle = app_handle.clone();

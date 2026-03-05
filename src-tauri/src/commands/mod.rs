@@ -4,3 +4,4 @@ pub mod tools;
 pub mod runner;
 pub mod scheduler;
 pub mod ai_parse;
+pub mod plan_gen;

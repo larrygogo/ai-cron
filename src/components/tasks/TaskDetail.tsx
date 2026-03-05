@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { Play, Pencil, Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Play, Pencil, Trash2, RefreshCw, Save, Loader } from "lucide-react";
 import { useTaskStore } from "../../stores/tasks";
 import { StatusBadge } from "./StatusBadge";
 import { RunHistory } from "../runs/RunHistory";
 import { NextRunsPreview } from "../scheduler/NextRunsPreview";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import type { Task } from "../../lib/types";
 import * as api from "../../lib/tauri";
 
@@ -14,9 +15,7 @@ interface Props {
 }
 
 const toolLabels: Record<string, string> = {
-  claude: "claude -p",
-  opencode: "opencode",
-  codex: "codex --approval-mode full-auto",
+  claude: "Claude Code CLI",
   custom: "custom",
 };
 
@@ -32,6 +31,57 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 export function TaskDetail({ task, onEdit, liveRunId }: Props) {
   const { updateTaskInStore, removeTaskFromStore } = useTaskStore();
   const [running, setRunning] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [activeTab, setActiveTab] = useState<"detail" | "history">("detail");
+  const [editingPlan, setEditingPlan] = useState(false);
+  const [planDraft, setPlanDraft] = useState(task.execution_plan || "");
+  const [generatingPlan, setGeneratingPlan] = useState(false);
+  const [savingPlan, setSavingPlan] = useState(false);
+
+  // Listen for plan_generated events
+  useEffect(() => {
+    const unlisten = api.onPlanGenerated((taskId) => {
+      if (taskId === task.id) {
+        api.getTask(task.id).then((updated) => {
+          updateTaskInStore(updated);
+          setPlanDraft(updated.execution_plan || "");
+        });
+      }
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [task.id]);
+
+  // Sync plan draft when task changes
+  useEffect(() => {
+    setPlanDraft(task.execution_plan || "");
+    setEditingPlan(false);
+  }, [task.execution_plan]);
+
+  const handleGeneratePlan = async () => {
+    setGeneratingPlan(true);
+    try {
+      const plan = await api.generatePlan(task.id);
+      setPlanDraft(plan);
+      updateTaskInStore({ ...task, execution_plan: plan });
+    } catch (e) {
+      console.error("Plan generation failed:", e);
+    } finally {
+      setGeneratingPlan(false);
+    }
+  };
+
+  const handleSavePlan = async () => {
+    setSavingPlan(true);
+    try {
+      await api.updatePlan(task.id, planDraft);
+      updateTaskInStore({ ...task, execution_plan: planDraft });
+      setEditingPlan(false);
+    } catch (e) {
+      console.error("Plan save failed:", e);
+    } finally {
+      setSavingPlan(false);
+    }
+  };
 
   const handleToggleEnabled = async () => {
     try {
@@ -54,7 +104,6 @@ export function TaskDetail({ task, onEdit, liveRunId }: Props) {
   };
 
   const handleDelete = async () => {
-    if (!confirm(`确定删除任务 "${task.name}"？`)) return;
     try {
       await api.deleteTask(task.id);
       removeTaskFromStore(task.id);
@@ -122,7 +171,7 @@ export function TaskDetail({ task, onEdit, liveRunId }: Props) {
           </div>
           <button
             className="btn btn-danger"
-            onClick={handleDelete}
+            onClick={() => setShowDeleteConfirm(true)}
             style={{ fontSize: 11 }}
           >
             <Trash2 size={11} />
@@ -173,6 +222,35 @@ export function TaskDetail({ task, onEdit, liveRunId }: Props) {
           )}
         </div>
 
+        {/* Tab bar */}
+        <div style={{
+          display: "flex",
+          gap: 0,
+          borderBottom: "1px solid var(--border)",
+          marginBottom: 16,
+        }}>
+          {(["detail", "history"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                padding: "8px 16px",
+                fontSize: 12,
+                fontWeight: activeTab === tab ? 500 : 400,
+                color: activeTab === tab ? "var(--accent)" : "var(--text-muted)",
+                background: "none",
+                border: "none",
+                borderBottom: activeTab === tab ? "2px solid var(--accent)" : "2px solid transparent",
+                cursor: "pointer",
+                marginBottom: -1,
+              }}
+            >
+              {tab === "detail" ? "详情" : "运行历史"}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === "detail" && (<>
         {/* Prompt */}
         <div>
           <div className="label">提示词</div>
@@ -191,6 +269,87 @@ export function TaskDetail({ task, onEdit, liveRunId }: Props) {
           >
             {task.prompt || <span style={{ color: "var(--text-muted)" }}>—</span>}
           </div>
+        </div>
+
+        {/* Execution Plan */}
+        <div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <div className="label" style={{ marginBottom: 0 }}>执行计划</div>
+            <div style={{ display: "flex", gap: 4 }}>
+              {editingPlan ? (
+                <>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ fontSize: 10, padding: "2px 8px" }}
+                    onClick={() => { setEditingPlan(false); setPlanDraft(task.execution_plan || ""); }}
+                  >
+                    取消
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    style={{ fontSize: 10, padding: "2px 8px" }}
+                    onClick={handleSavePlan}
+                    disabled={savingPlan}
+                  >
+                    {savingPlan ? <Loader size={10} className="spin" /> : <Save size={10} />}
+                    保存
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ fontSize: 10, padding: "2px 8px" }}
+                    onClick={() => setEditingPlan(true)}
+                    disabled={!task.execution_plan}
+                  >
+                    <Pencil size={10} />
+                    编辑
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ fontSize: 10, padding: "2px 8px" }}
+                    onClick={handleGeneratePlan}
+                    disabled={generatingPlan}
+                  >
+                    {generatingPlan ? <Loader size={10} className="spin" /> : <RefreshCw size={10} />}
+                    {task.execution_plan ? "重新生成" : "生成计划"}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          {editingPlan ? (
+            <textarea
+              className="input"
+              style={{ minHeight: 120, fontSize: 11.5, lineHeight: 1.6, fontFamily: "monospace" }}
+              value={planDraft}
+              onChange={(e) => setPlanDraft(e.target.value)}
+            />
+          ) : task.execution_plan ? (
+            <div
+              style={{
+                background: "var(--bg-input)",
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+                padding: "10px 12px",
+                fontSize: 11.5,
+                lineHeight: 1.6,
+                color: "var(--text-secondary)",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                fontFamily: "monospace",
+                maxHeight: 200,
+                overflowY: "auto",
+              }}
+            >
+              {task.execution_plan}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "8px 0" }}>
+              {generatingPlan ? "计划生成中..." : "暂无执行计划，点击「生成计划」自动生成"}
+            </div>
+          )}
         </div>
 
         {/* Webhook */}
@@ -216,13 +375,26 @@ export function TaskDetail({ task, onEdit, liveRunId }: Props) {
             </span>
           )}
         </div>
+        </>)}
 
-        {/* Run history */}
-        <div>
-          <div className="label" style={{ marginBottom: 8 }}>运行历史</div>
+        {activeTab === "history" && (
           <RunHistory taskId={task.id} liveRunId={liveRunId} />
-        </div>
+        )}
       </div>
+
+      {showDeleteConfirm && (
+        <ConfirmDialog
+          title="删除任务"
+          message={`确定删除任务 "${task.name}"？此操作不可撤销。`}
+          confirmLabel="删除"
+          danger
+          onConfirm={() => {
+            setShowDeleteConfirm(false);
+            handleDelete();
+          }}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
     </div>
   );
 }

@@ -1,3 +1,5 @@
+import { formatDistanceToNow } from "date-fns";
+import { zhCN } from "date-fns/locale";
 import type { Task } from "../../lib/types";
 import { StatusBadge } from "./StatusBadge";
 
@@ -84,6 +86,20 @@ export function TaskItem({ task, selected, onClick }: Props) {
           {task.cron_human || task.cron_expression}
         </span>
       </div>
+      {(task.last_run_at || task.consecutive_failures > 0) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10 }}>
+          {task.last_run_at && (
+            <span style={{ color: "var(--text-muted)" }}>
+              {formatDistanceToNow(new Date(task.last_run_at), { addSuffix: true, locale: zhCN })}
+            </span>
+          )}
+          {task.consecutive_failures > 0 && (
+            <span style={{ color: "var(--accent-red)" }}>
+              连续失败 {task.consecutive_failures} 次
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

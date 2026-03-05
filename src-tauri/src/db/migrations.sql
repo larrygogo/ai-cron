@@ -60,12 +60,18 @@ CREATE TRIGGER IF NOT EXISTS runs_ai AFTER INSERT ON runs BEGIN
 END;
 
 CREATE TRIGGER IF NOT EXISTS runs_au AFTER UPDATE ON runs BEGIN
-    UPDATE runs_fts SET stdout = NEW.stdout, stderr = NEW.stderr
-    WHERE run_id = NEW.id;
+    INSERT INTO runs_fts(runs_fts, run_id, task_id, task_name, stdout, stderr)
+    SELECT 'delete', OLD.id, OLD.task_id, COALESCE(t.name, ''), OLD.stdout, OLD.stderr
+    FROM tasks t WHERE t.id = OLD.task_id;
+    INSERT INTO runs_fts(run_id, task_id, task_name, stdout, stderr)
+    SELECT NEW.id, NEW.task_id, COALESCE(t.name, ''), NEW.stdout, NEW.stderr
+    FROM tasks t WHERE t.id = NEW.task_id;
 END;
 
 CREATE TRIGGER IF NOT EXISTS runs_ad AFTER DELETE ON runs BEGIN
-    DELETE FROM runs_fts WHERE run_id = OLD.id;
+    INSERT INTO runs_fts(runs_fts, run_id, task_id, task_name, stdout, stderr)
+    SELECT 'delete', OLD.id, OLD.task_id, COALESCE(t.name, ''), OLD.stdout, OLD.stderr
+    FROM tasks t WHERE t.id = OLD.task_id;
 END;
 
 -- Settings table (key-value)
@@ -83,9 +89,14 @@ INSERT OR IGNORE INTO settings(key, value) VALUES
     ('log_retention_days', '30'),
     ('log_retention_per_task', '100'),
     ('notify_on_success', 'false'),
-    ('notify_on_failure', 'true');
+    ('notify_on_failure', 'true'),
+    ('timezone', '"system"'),
+    ('mcp_server_enabled', 'true'),
+    ('mcp_server_port', '23987');
 
 -- Index for common queries
 CREATE INDEX IF NOT EXISTS idx_runs_task_id ON runs(task_id);
 CREATE INDEX IF NOT EXISTS idx_runs_started_at ON runs(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status);
+
+-- v2: execution plan + enhanced logging (applied via ALTER TABLE in init_db)

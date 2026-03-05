@@ -1,4 +1,4 @@
-export type AiTool = "claude" | "opencode" | "codex" | "custom";
+export type AiTool = "claude" | "custom";
 
 export type RunStatus = "queued" | "running" | "success" | "failed" | "killed";
 
@@ -28,6 +28,10 @@ export interface Task {
   restrict_filesystem: boolean;
   env_vars: Record<string, string>;
   webhook_config?: WebhookConfig;
+  allowed_tools: string[];
+  skip_permissions: boolean;
+  execution_plan: string;
+  consecutive_failures: number;
   created_at: string;
   updated_at: string;
   last_run_at?: string;
@@ -48,6 +52,8 @@ export interface CreateTaskRequest {
   restrict_filesystem?: boolean;
   env_vars?: Record<string, string>;
   webhook_config?: WebhookConfig;
+  allowed_tools?: string[];
+  skip_permissions?: boolean;
 }
 
 export interface UpdateTaskRequest {
@@ -64,6 +70,16 @@ export interface UpdateTaskRequest {
   restrict_filesystem?: boolean;
   env_vars?: Record<string, string>;
   webhook_config?: WebhookConfig | null;
+  allowed_tools?: string[];
+  skip_permissions?: boolean;
+  execution_plan?: string;
+}
+
+export interface GoalEvaluation {
+  pre_check?: string;
+  post_check?: string;
+  passed?: boolean;
+  evaluated_at?: string;
 }
 
 export interface Run {
@@ -77,6 +93,7 @@ export interface Run {
   ended_at?: string;
   duration_ms?: number;
   triggered_by: TriggerSource;
+  goal_evaluation?: string;
 }
 
 export interface RunWithTaskName {
@@ -95,7 +112,7 @@ export interface ToolInfo {
 }
 
 export interface AppSettings {
-  nl_provider: "claude" | "openai" | "ollama";
+  nl_provider: "claude" | "openai" | "ollama" | "claude_cli";
   nl_api_key: string;
   nl_base_url: string;
   nl_model: string;
@@ -103,6 +120,14 @@ export interface AppSettings {
   log_retention_per_task: number;
   notify_on_success: boolean;
   notify_on_failure: boolean;
+  timezone: string;
+  mcp_server_enabled: boolean;
+  mcp_server_port: number;
+}
+
+export interface McpStatus {
+  running: boolean;
+  port: number;
 }
 
 export interface TaskDraft {

@@ -6,6 +6,7 @@ import { TaskFormModal } from "../components/tasks/TaskFormModal";
 import { useTaskStore } from "../stores/tasks";
 import { useRunStore } from "../stores/runs";
 import { Bot } from "lucide-react";
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import * as api from "../lib/tauri";
 import type { Task } from "../lib/types";
 
@@ -15,41 +16,50 @@ export function Dashboard() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [liveRunId, setLiveRunId] = useState<string | undefined>();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const selectedTask = tasks.find((t) => t.id === selectedId) ?? null;
 
-  // Subscribe to run events
+  // Subscribe to run events (global, not per-task — callbacks read selectedId dynamically)
   useEffect(() => {
-    const cleanups: (() => void)[] = [];
+    let cancelled = false;
+    const unsubs: (() => void)[] = [];
 
     const setup = async () => {
       const unsubStarted = await api.onRunStarted(({ runId, taskId }) => {
+        if (cancelled) return;
         const currentSelectedId = useTaskStore.getState().selectedId;
         if (taskId === currentSelectedId) setLiveRunId(runId);
       });
-      cleanups.push(unsubStarted);
+      if (cancelled) { unsubStarted(); return; }
+      unsubs.push(unsubStarted);
 
       const unsubOutput = await api.onRunOutput(({ runId, chunk, stream }) => {
+        if (cancelled) return;
         const state = useTaskStore.getState();
         const task = state.tasks.find((t) => t.id === state.selectedId);
         if (task) appendOutput(runId, task.id, chunk, stream);
       });
-      cleanups.push(unsubOutput);
+      if (cancelled) { unsubOutput(); return; }
+      unsubs.push(unsubOutput);
 
       const unsubCompleted = await api.onRunCompleted(({ runId, taskId, status, exitCode, durationMs }) => {
+        if (cancelled) return;
         setLiveRunId((prev) => (prev === runId ? undefined : prev));
         updateRunStatus(runId, taskId, status, durationMs, exitCode);
         useTaskStore.getState().fetchTasks();
       });
-      cleanups.push(unsubCompleted);
+      if (cancelled) { unsubCompleted(); return; }
+      unsubs.push(unsubCompleted);
     };
 
     setup();
 
     return () => {
-      cleanups.forEach((unsub) => unsub());
+      cancelled = true;
+      unsubs.forEach((unsub) => unsub());
     };
-  }, [selectedId]);
+  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -62,11 +72,7 @@ export function Dashboard() {
           if (selectedTask) api.triggerTaskNow(selectedTask.id).catch(console.error);
           break;
         case "Delete":
-          if (selectedTask && confirm(`确定删除任务 "${selectedTask.name}"？`)) {
-            api.deleteTask(selectedTask.id).then(() => {
-              useTaskStore.getState().removeTaskFromStore(selectedTask.id);
-            });
-          }
+          if (selectedTask) setShowDeleteConfirm(true);
           break;
         case " ":
           if (selectedTask) {
@@ -106,6 +112,21 @@ export function Dashboard() {
       )}
       {editingTask && (
         <TaskFormModal task={editingTask} onClose={() => setEditingTask(null)} />
+      )}
+      {showDeleteConfirm && selectedTask && (
+        <ConfirmDialog
+          title="删除任务"
+          message={`确定删除任务 "${selectedTask.name}"？此操作不可撤销。`}
+          confirmLabel="删除"
+          danger
+          onConfirm={() => {
+            setShowDeleteConfirm(false);
+            api.deleteTask(selectedTask.id).then(() => {
+              useTaskStore.getState().removeTaskFromStore(selectedTask.id);
+            });
+          }}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
       )}
     </div>
   );

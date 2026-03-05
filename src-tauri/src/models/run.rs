@@ -68,6 +68,7 @@ pub struct Run {
     pub ended_at: Option<DateTime<Utc>>,
     pub duration_ms: Option<u64>,
     pub triggered_by: TriggerSource,
+    pub goal_evaluation: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

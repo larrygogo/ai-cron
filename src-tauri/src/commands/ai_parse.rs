@@ -3,6 +3,7 @@ use crate::commands::tools::AppSettings;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::time::Duration;
 use tauri::State;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,8 +21,8 @@ Your job is to extract:
 1. A short name for the task (2-5 words)
 2. A cron expression (standard 5-field: minute hour dom month dow)
 3. A human-readable schedule description in Chinese (e.g., "每周工作日 09:00")
-4. A clear, concise prompt to pass to an AI coding agent (Claude Code / OpenCode / Codex)
-5. The best AI tool to use: "claude", "opencode", "codex", or "custom"
+4. A clear, concise prompt to pass to an AI coding agent (Claude Code)
+5. The best AI tool to use: "claude" or "custom"
 6. A suggested working directory (use "~/" as default if not mentioned)
 
 Return ONLY valid JSON in this exact format, no markdown, no explanation:
@@ -43,19 +44,13 @@ Rules:
 #[tauri::command]
 pub async fn parse_nl_to_task(
     input: String,
-    db: State<'_, DbConn>,
+    _db: State<'_, DbConn>,
 ) -> Result<TaskDraft, String> {
-    // Load settings
-    let settings = crate::commands::tools::get_settings(db)?;
-
-    match settings.nl_provider.as_str() {
-        "ollama" => parse_with_ollama(&input, &settings).await,
-        "openai" => parse_with_openai(&input, &settings).await,
-        _ => parse_with_claude(&input, &settings).await,
-    }
+    // Always use local Claude CLI for natural language parsing
+    parse_with_cli(&input).await
 }
 
-async fn parse_with_claude(input: &str, settings: &AppSettings) -> Result<TaskDraft, String> {
+pub async fn parse_with_claude(input: &str, settings: &AppSettings) -> Result<TaskDraft, String> {
     if settings.nl_api_key.is_empty() {
         return Err("Claude API key not configured. Please set it in Settings.".to_string());
     }
@@ -99,7 +94,7 @@ async fn parse_with_claude(input: &str, settings: &AppSettings) -> Result<TaskDr
         .map_err(|e| format!("Failed to parse AI response as JSON: {}\nRaw: {}", e, text))
 }
 
-async fn parse_with_openai(input: &str, settings: &AppSettings) -> Result<TaskDraft, String> {
+pub async fn parse_with_openai(input: &str, settings: &AppSettings) -> Result<TaskDraft, String> {
     if settings.nl_api_key.is_empty() {
         return Err("OpenAI API key not configured. Please set it in Settings.".to_string());
     }
@@ -149,7 +144,7 @@ async fn parse_with_openai(input: &str, settings: &AppSettings) -> Result<TaskDr
         .map_err(|e| format!("Failed to parse AI response: {}\nRaw: {}", e, text))
 }
 
-async fn parse_with_ollama(input: &str, settings: &AppSettings) -> Result<TaskDraft, String> {
+pub async fn parse_with_ollama(input: &str, settings: &AppSettings) -> Result<TaskDraft, String> {
     let base_url = if settings.nl_base_url.is_empty() {
         "http://localhost:11434".to_string()
     } else {
@@ -190,4 +185,43 @@ async fn parse_with_ollama(input: &str, settings: &AppSettings) -> Result<TaskDr
 
     serde_json::from_str::<TaskDraft>(text.trim())
         .map_err(|e| format!("Failed to parse AI response: {}\nRaw: {}", e, text))
+}
+
+pub async fn parse_with_cli(input: &str) -> Result<TaskDraft, String> {
+    let prompt = format!("{}\n\nUser request: {}", SYSTEM_PROMPT, input);
+
+    let output = tokio::time::timeout(
+        Duration::from_secs(30),
+        tokio::process::Command::new("claude")
+            .args(["-p", &prompt])
+            .output(),
+    )
+    .await
+    .map_err(|_| "Claude CLI timed out after 30 seconds".to_string())?
+    .map_err(|e| format!("Failed to run claude CLI (is it installed?): {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Claude CLI exited with error: {}", stderr));
+    }
+
+    let raw = String::from_utf8_lossy(&output.stdout);
+    let text = extract_json_from_output(&raw);
+
+    serde_json::from_str::<TaskDraft>(text.trim())
+        .map_err(|e| format!("Failed to parse CLI response as JSON: {}\nRaw: {}", e, raw))
+}
+
+/// Extract JSON from CLI output that may be wrapped in markdown code blocks.
+fn extract_json_from_output(raw: &str) -> &str {
+    let trimmed = raw.trim();
+    if let Some(start) = trimmed.find("```") {
+        let after_backticks = &trimmed[start + 3..];
+        let json_start = after_backticks.find('\n').map(|i| i + 1).unwrap_or(0);
+        let content = &after_backticks[json_start..];
+        if let Some(end) = content.find("```") {
+            return content[..end].trim();
+        }
+    }
+    trimmed
 }

@@ -65,7 +65,7 @@ export function RunHistory({ taskId, liveRunId }: Props) {
                 status={isLive ? "running" : run.status}
               />
               <span style={{ color: "var(--text-secondary)", minWidth: 120 }}>
-                {format(new Date(run.started_at), "MMM d, HH:mm:ss")}
+                {format(new Date(run.started_at), "M月d日 HH:mm:ss")}
               </span>
               <span
                 style={{ color: "var(--text-muted)", minWidth: 40 }}
@@ -82,8 +82,22 @@ export function RunHistory({ taskId, liveRunId }: Props) {
                   flexShrink: 0,
                 }}
               >
-                {run.triggered_by}
+                {run.triggered_by === "manual" ? "手动" : "计划"}
               </span>
+              {run.goal_evaluation && (() => {
+                try {
+                  const evalData = JSON.parse(run.goal_evaluation);
+                  return (
+                    <span style={{
+                      fontSize: 10,
+                      color: evalData.passed ? "var(--accent)" : "#e8a838",
+                      flexShrink: 0,
+                    }}>
+                      {evalData.passed ? "✓ 目标达成" : "⚠ 目标未达成"}
+                    </span>
+                  );
+                } catch { return null; }
+              })()}
               <span style={{ flex: 1 }} />
               <button
                 className="btn btn-ghost"

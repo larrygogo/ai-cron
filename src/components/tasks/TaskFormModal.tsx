@@ -40,6 +40,8 @@ export function TaskFormModal({ task, onClose }: Props) {
   const [injectContext, setInjectContext] = useState(task?.inject_context ?? false);
   const [restrictNetwork, setRestrictNetwork] = useState(task?.restrict_network ?? false);
   const [restrictFs, setRestrictFs] = useState(task?.restrict_filesystem ?? false);
+  const [allowedTools, setAllowedTools] = useState<string[]>(task?.allowed_tools ?? []);
+  const [skipPermissions, setSkipPermissions] = useState(task?.skip_permissions ?? false);
 
   // Env vars
   const [envPairs, setEnvPairs] = useState<{ key: string; value: string }[]>(
@@ -86,6 +88,8 @@ export function TaskFormModal({ task, onClose }: Props) {
           restrict_filesystem: restrictFs,
           env_vars: envVars,
           webhook_config: webhookConfig,
+          allowed_tools: aiTool === "claude" ? allowedTools : [],
+          skip_permissions: aiTool === "claude" ? skipPermissions : false,
         };
         const updated = await api.updateTask(task!.id, req);
         updateTaskInStore(updated);
@@ -104,6 +108,8 @@ export function TaskFormModal({ task, onClose }: Props) {
           restrict_filesystem: restrictFs,
           env_vars: envVars,
           webhook_config: webhookConfig ?? undefined,
+          allowed_tools: aiTool === "claude" ? allowedTools : [],
+          skip_permissions: aiTool === "claude" ? skipPermissions : false,
         };
         const created = await api.createTask(req);
         addTaskToStore(created);
@@ -117,7 +123,7 @@ export function TaskFormModal({ task, onClose }: Props) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div
         className="modal"
         style={{ width: 620 }}
@@ -186,9 +192,7 @@ export function TaskFormModal({ task, onClose }: Props) {
               value={aiTool}
               onChange={(e) => setAiTool(e.target.value as AiTool)}
             >
-              <option value="claude">Claude (claude -p)</option>
-              <option value="opencode">OpenCode</option>
-              <option value="codex">Codex (full-auto)</option>
+              <option value="claude">Claude Code CLI (claude -p)</option>
               <option value="custom">自定义命令</option>
             </select>
           </div>
@@ -207,6 +211,50 @@ export function TaskFormModal({ task, onClose }: Props) {
                 value={customCommand}
                 onChange={(e) => setCustomCommand(e.target.value)}
                 placeholder="echo {prompt}"
+              />
+            </div>
+          )}
+
+          {/* Claude CLI options */}
+          {aiTool === "claude" && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                padding: "10px 12px",
+                background: "var(--bg-input)",
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+              }}
+            >
+              <div>
+                <label className="label">
+                  授权工具{" "}
+                  <span style={{ textTransform: "none", color: "var(--text-muted)" }}>
+                    (--allowedTools)
+                  </span>
+                </label>
+                <textarea
+                  className="input"
+                  value={allowedTools.join("\n")}
+                  onChange={(e) =>
+                    setAllowedTools(
+                      e.target.value.split("\n").filter((l) => l.trim() !== "")
+                    )
+                  }
+                  rows={3}
+                  placeholder={"Bash(gh *)\nBash(npm *)\nRead"}
+                  style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 11 }}
+                />
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                  每行一个工具模式，Claude CLI 将自动获得这些工具的使用权限
+                </div>
+              </div>
+              <ToggleRow
+                label="跳过权限确认 (--dangerously-skip-permissions)"
+                checked={skipPermissions}
+                onChange={setSkipPermissions}
               />
             </div>
           )}

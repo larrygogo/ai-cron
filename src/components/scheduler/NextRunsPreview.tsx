@@ -5,19 +5,30 @@ import * as api from "../../lib/tauri";
 
 interface Props {
   cronExpr: string;
+  timezone?: string;
 }
 
-export function NextRunsPreview({ cronExpr }: Props) {
+export function NextRunsPreview({ cronExpr, timezone }: Props) {
   const [nextRuns, setNextRuns] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [resolvedTz, setResolvedTz] = useState<string | undefined>(timezone);
+
+  // If no timezone prop, load from settings
+  useEffect(() => {
+    if (timezone !== undefined) {
+      setResolvedTz(timezone);
+      return;
+    }
+    api.getSettings().then((s) => setResolvedTz(s.timezone)).catch(() => {});
+  }, [timezone]);
 
   useEffect(() => {
     if (!cronExpr) return;
     setError(null);
-    api.previewNextRuns(cronExpr, 5)
+    api.previewNextRuns(cronExpr, 5, resolvedTz)
       .then(setNextRuns)
       .catch((e) => setError(String(e)));
-  }, [cronExpr]);
+  }, [cronExpr, resolvedTz]);
 
   if (error) {
     return (
@@ -41,7 +52,7 @@ export function NextRunsPreview({ cronExpr }: Props) {
           }}
         >
           <Clock size={10} style={{ color: "var(--text-muted)" }} />
-          <span>{format(new Date(ts), "MMM d, yyyy  HH:mm")}</span>
+          <span>{format(new Date(ts), "yyyy年M月d日  HH:mm")}</span>
           {i === 0 && (
             <span
               style={{

@@ -1,23 +1,42 @@
 import { useEffect, useRef, useState } from "react";
-import { Save, RefreshCw, ExternalLink } from "lucide-react";
-import type { AppSettings, ToolInfo } from "../lib/types";
+import { Save, RefreshCw, ExternalLink, Wrench } from "lucide-react";
+import type { AppSettings, McpStatus, ToolInfo } from "../lib/types";
 import * as api from "../lib/tauri";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
-const PROVIDERS = [
-  { value: "claude", label: "Claude (Anthropic)" },
-  { value: "openai", label: "OpenAI" },
-  { value: "ollama", label: "Ollama (local)" },
-] as const;
+const COMMON_TIMEZONES = [
+  "Asia/Shanghai",
+  "Asia/Tokyo",
+  "Asia/Seoul",
+  "Asia/Singapore",
+  "Asia/Hong_Kong",
+  "Asia/Taipei",
+  "Asia/Kolkata",
+  "Asia/Dubai",
+  "Europe/London",
+  "Europe/Paris",
+  "Europe/Berlin",
+  "Europe/Moscow",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Sao_Paulo",
+  "Pacific/Auckland",
+  "Australia/Sydney",
+  "UTC",
+];
 
 export function Settings() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [tools, setTools] = useState<ToolInfo[]>([]);
+  const [systemTz, setSystemTz] = useState<string>("");
+  const [mcpStatus, setMcpStatus] = useState<McpStatus | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const savedTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const [repairMsg, setRepairMsg] = useState<string>("");
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -28,9 +47,10 @@ export function Settings() {
   useEffect(() => {
     api.getSettings().then(setSettings).catch((e) => {
       console.error("Failed to load settings:", e);
-      setError("Failed to load settings");
     });
     api.detectTools().then(setTools).catch(console.error);
+    api.getSystemTimezone().then(setSystemTz).catch(console.error);
+    api.getMcpStatus().then(setMcpStatus).catch(console.error);
   }, []);
 
   const handleSave = async () => {
@@ -43,6 +63,17 @@ export function Settings() {
       savedTimerRef.current = setTimeout(() => setSaved(false), 2000);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleRepairMcp = async () => {
+    try {
+      const msg = await api.repairMcpConfig();
+      setRepairMsg(msg);
+      setTimeout(() => setRepairMsg(""), 3000);
+    } catch (e) {
+      setRepairMsg(String(e));
+      setTimeout(() => setRepairMsg(""), 3000);
     }
   };
 
@@ -114,73 +145,6 @@ export function Settings() {
         </button>
       </Section>
 
-      {/* NL Provider */}
-      <Section title="自然语言服务">
-        <div>
-          <label className="label">服务商</label>
-          <select
-            className="input"
-            value={settings.nl_provider}
-            onChange={(e) =>
-              patch({ nl_provider: e.target.value as AppSettings["nl_provider"] })
-            }
-          >
-            {PROVIDERS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {settings.nl_provider !== "ollama" && (
-          <div>
-            <label className="label">API Key</label>
-            <input
-              className="input"
-              type="password"
-              value={settings.nl_api_key}
-              onChange={(e) => patch({ nl_api_key: e.target.value })}
-              placeholder="sk-..."
-            />
-          </div>
-        )}
-
-        {(settings.nl_provider === "ollama" || settings.nl_provider === "openai") && (
-          <div>
-            <label className="label">
-              {settings.nl_provider === "ollama" ? "Ollama URL" : "Base URL (optional)"}
-            </label>
-            <input
-              className="input"
-              value={settings.nl_base_url}
-              onChange={(e) => patch({ nl_base_url: e.target.value })}
-              placeholder={
-                settings.nl_provider === "ollama"
-                  ? "http://localhost:11434"
-                  : "https://api.openai.com"
-              }
-            />
-          </div>
-        )}
-
-        <div>
-          <label className="label">模型 (可选)</label>
-          <input
-            className="input"
-            value={settings.nl_model}
-            onChange={(e) => patch({ nl_model: e.target.value })}
-            placeholder={
-              settings.nl_provider === "claude"
-                ? "claude-3-5-haiku-20241022"
-                : settings.nl_provider === "openai"
-                ? "gpt-4o-mini"
-                : "llama3.2"
-            }
-          />
-        </div>
-      </Section>
-
       {/* Log retention */}
       <Section title="日志保留">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -213,18 +177,80 @@ export function Settings() {
         </div>
       </Section>
 
-      {/* Notifications */}
-      <Section title="通知">
-        <ToggleRow
-          label="成功时通知"
-          checked={settings.notify_on_success}
-          onChange={(v) => patch({ notify_on_success: v })}
-        />
-        <ToggleRow
-          label="失败时通知"
-          checked={settings.notify_on_failure}
-          onChange={(v) => patch({ notify_on_failure: v })}
-        />
+      {/* Timezone */}
+      <Section title="时区">
+        <div>
+          <label className="label">调度时区</label>
+          <select
+            className="input"
+            value={settings.timezone}
+            onChange={(e) => patch({ timezone: e.target.value })}
+          >
+            <option value="system">
+              跟随系统{systemTz ? ` (${systemTz})` : ""}
+            </option>
+            {COMMON_TIMEZONES.map((tz) => (
+              <option key={tz} value={tz}>
+                {tz}
+              </option>
+            ))}
+          </select>
+          <div
+            style={{
+              fontSize: 10,
+              color: "var(--text-muted)",
+              marginTop: 4,
+              lineHeight: 1.5,
+            }}
+          >
+            Cron 表达式将基于此时区匹配。例如设置 Asia/Shanghai 后，
+            "0 9 * * *" 表示北京时间 09:00 触发。
+          </div>
+        </div>
+      </Section>
+
+      {/* MCP Server */}
+      <Section title="MCP Server">
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "8px 0",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span
+              className="status-dot"
+              style={{
+                background: mcpStatus?.running ? "var(--accent)" : "var(--accent-red)",
+                boxShadow: mcpStatus?.running ? "0 0 5px var(--accent)" : "none",
+              }}
+            />
+            <div>
+              <div style={{ fontSize: 12 }}>
+                {mcpStatus?.running
+                  ? `运行中 (端口 ${mcpStatus.port})`
+                  : "未运行"}
+              </div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                已自动配置到 ~/.claude.json
+              </div>
+            </div>
+          </div>
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: 11 }}
+            onClick={handleRepairMcp}
+          >
+            <Wrench size={10} /> 修复配置
+          </button>
+        </div>
+        {repairMsg && (
+          <div style={{ fontSize: 11, color: "var(--text-secondary)", padding: "4px 0" }}>
+            {repairMsg}
+          </div>
+        )}
       </Section>
 
       {/* Save */}
@@ -258,37 +284,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {children}
       </div>
-    </div>
-  );
-}
-
-function ToggleRow({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "4px 0",
-      }}
-    >
-      <span style={{ fontSize: 12 }}>{label}</span>
-      <label className="toggle">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-        <span className="toggle-track" />
-      </label>
     </div>
   );
 }

@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { Search, Download, Trash2, RefreshCw } from "lucide-react";
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { StatusBadge } from "../components/tasks/StatusBadge";
 import { RunLogModal } from "../components/runs/RunLogModal";
 import * as api from "../lib/tauri";
 import type { Run, RunWithTaskName, RunStatus } from "../lib/types";
 import { formatDistanceToNow } from "date-fns";
+import { zhCN } from "date-fns/locale";
 import { formatDuration } from "../lib/utils";
 
 const LIMIT = 50;
@@ -23,6 +25,7 @@ export function Logs() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [selectedRun, setSelectedRun] = useState<Run | null>(null);
+  const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -48,7 +51,6 @@ export function Logs() {
   }, [fetchData]);
 
   const handleCleanup = async () => {
-    if (!confirm("根据保留策略清理旧运行记录？")) return;
     try {
       const count = await api.cleanupOldRuns();
       await fetchData();
@@ -58,27 +60,32 @@ export function Logs() {
     }
   };
 
-  const handleExport = (format: "txt" | "json") => {
-    let content: string;
-    if (format === "json") {
-      content = JSON.stringify(runs, null, 2);
-    } else {
-      content = runs
-        .map(
-          (r) =>
-            `[${r.run.status}] ${r.task_name} — ${r.run.started_at}\n` +
-            `stdout: ${r.run.stdout.slice(0, 500)}\n` +
-            `stderr: ${r.run.stderr.slice(0, 500)}\n---`
-        )
-        .join("\n\n");
+  const handleExport = async (format: "txt" | "json") => {
+    const content =
+      format === "json"
+        ? JSON.stringify(runs, null, 2)
+        : runs
+            .map(
+              (r) =>
+                `[${r.run.status}] ${r.task_name} — ${r.run.started_at}\n` +
+                `输出: ${r.run.stdout.slice(0, 500)}\n` +
+                `错误: ${r.run.stderr.slice(0, 500)}\n---`
+            )
+            .join("\n\n");
+
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+      const path = await save({
+        defaultPath: `ai-cron-logs.${format}`,
+        filters: [{ name: format.toUpperCase(), extensions: [format] }],
+      });
+      if (path) {
+        await writeTextFile(path, content);
+      }
+    } catch (e) {
+      console.error("Export failed:", e);
     }
-    const blob = new Blob([content], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `ai-cron-logs.${format}`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   return (
@@ -163,7 +170,7 @@ export function Logs() {
         <button className="btn btn-ghost" onClick={() => handleExport("txt")} style={{ fontSize: 10 }}>
           <Download size={10} /> TXT
         </button>
-        <button className="btn btn-ghost" onClick={handleCleanup} style={{ fontSize: 10 }}>
+        <button className="btn btn-ghost" onClick={() => setShowCleanupConfirm(true)} style={{ fontSize: 10 }}>
           <Trash2 size={10} /> 清理
         </button>
         <button className="btn btn-ghost" onClick={fetchData} style={{ fontSize: 10 }}>
@@ -255,6 +262,7 @@ export function Logs() {
                   >
                     {formatDistanceToNow(new Date(item.run.started_at), {
                       addSuffix: true,
+                      locale: zhCN,
                     })}
                   </td>
                   <td
@@ -286,7 +294,7 @@ export function Logs() {
                         }`,
                       }}
                     >
-                      {item.run.triggered_by}
+                      {item.run.triggered_by === "manual" ? "手动" : "计划"}
                     </span>
                   </td>
                   <td
@@ -351,6 +359,19 @@ export function Logs() {
       {/* Log modal */}
       {selectedRun && (
         <RunLogModal run={selectedRun} onClose={() => setSelectedRun(null)} />
+      )}
+      {showCleanupConfirm && (
+        <ConfirmDialog
+          title="清理日志"
+          message="根据保留策略清理旧运行记录？"
+          confirmLabel="清理"
+          danger
+          onConfirm={() => {
+            setShowCleanupConfirm(false);
+            handleCleanup();
+          }}
+          onCancel={() => setShowCleanupConfirm(false)}
+        />
       )}
     </div>
   );

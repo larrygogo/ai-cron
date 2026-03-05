@@ -32,19 +32,27 @@ export function RunLogModal({ run, onClose }: Props) {
   }, [liveOutput, activeTab]);
 
   const stdout = isLive ? (liveOutput?.stdout ?? "") : run.stdout;
-  const stderr = isLive ? (liveOutput?.stderr ?? "") : run.stderr;
-  const activeContent = activeTab === "stdout" ? stdout : stderr;
+  const rawStderr = isLive ? (liveOutput?.stderr ?? "") : run.stderr;
+  const activeContent = activeTab === "stdout" ? stdout : rawStderr;
 
   const renderHtml = (text: string) => {
     try {
-      return ansiConverter.toHtml(text);
+      let html = ansiConverter.toHtml(text);
+      // Style [ai-cron] phase lines differently
+      html = html.replace(
+        /^(\[ai-cron\].*)$/gm,
+        '<span style="color: #888; font-style: italic;">$1</span>'
+      );
+      return html;
     } catch {
       return text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
   };
 
+  const tabLabels: Record<typeof activeTab, string> = { stdout: "结果", stderr: "过程" };
+
   const handleDownload = () => {
-    const content = `=== STDOUT ===\n${stdout}\n\n=== STDERR ===\n${stderr}`;
+    const content = `=== 结果 ===\n${stdout}\n\n=== 过程 ===\n${rawStderr}`;
     const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -97,6 +105,26 @@ export function RunLogModal({ run, onClose }: Props) {
             >
               {isLive ? "● 实时" : run.status}
             </span>
+            {run.goal_evaluation && (() => {
+              try {
+                const evalData = JSON.parse(run.goal_evaluation);
+                return (
+                  <span
+                    title={evalData.post_check || ""}
+                    style={{
+                      fontSize: 10,
+                      padding: "2px 6px",
+                      borderRadius: 3,
+                      background: evalData.passed ? "var(--accent-dim)" : "#e8a83820",
+                      color: evalData.passed ? "var(--accent)" : "#e8a838",
+                      cursor: "help",
+                    }}
+                  >
+                    {evalData.passed ? "✓ 目标达成" : "⚠ 目标未达成"}
+                  </span>
+                );
+              } catch { return null; }
+            })()}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
@@ -129,44 +157,49 @@ export function RunLogModal({ run, onClose }: Props) {
             padding: "0 16px",
           }}
         >
-          {(["stdout", "stderr"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                padding: "8px 14px",
-                fontSize: 11,
-                background: "transparent",
-                border: "none",
-                borderBottom:
-                  activeTab === tab
-                    ? "2px solid var(--accent)"
-                    : "2px solid transparent",
-                color:
-                  activeTab === tab
-                    ? "var(--text-primary)"
-                    : "var(--text-muted)",
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              {tab}
-              {tab === "stderr" && stderr.length > 0 && (
-                <span
-                  style={{
-                    marginLeft: 5,
-                    fontSize: 9,
-                    color: "var(--accent-red)",
-                    background: "#ff444420",
-                    padding: "1px 4px",
-                    borderRadius: 3,
-                  }}
-                >
-                  {stderr.split("\n").filter(Boolean).length}
-                </span>
-              )}
-            </button>
-          ))}
+          {(["stdout", "stderr"] as const).map((tab) => {
+            const stderrLines = rawStderr.split("\n").filter(Boolean);
+            const hasNonSystemLines = stderrLines.some((l) => !l.startsWith("[ai-cron]"));
+            const isError = hasNonSystemLines && run.status === "failed";
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                style={{
+                  padding: "8px 14px",
+                  fontSize: 11,
+                  background: "transparent",
+                  border: "none",
+                  borderBottom:
+                    activeTab === tab
+                      ? "2px solid var(--accent)"
+                      : "2px solid transparent",
+                  color:
+                    activeTab === tab
+                      ? "var(--text-primary)"
+                      : "var(--text-muted)",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                {tabLabels[tab]}
+                {tab === "stderr" && stderrLines.length > 0 && (
+                  <span
+                    style={{
+                      marginLeft: 5,
+                      fontSize: 9,
+                      color: isError ? "var(--accent-red)" : "var(--text-muted)",
+                      background: isError ? "#ff444420" : "var(--border)",
+                      padding: "1px 4px",
+                      borderRadius: 3,
+                    }}
+                  >
+                    {stderrLines.length}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* Log content */}

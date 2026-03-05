@@ -1,8 +1,17 @@
 import { useState } from "react";
 import { Sparkles, X, ChevronRight, Loader } from "lucide-react";
-import type { AiTool, CreateTaskRequest, TaskDraft } from "../../lib/types";
+import type { AiTool, CreateTaskRequest, TaskDraft, WebhookConfig } from "../../lib/types";
 import { useTaskStore } from "../../stores/tasks";
 import * as api from "../../lib/tauri";
+
+const defaultWebhook: WebhookConfig = {
+  url: "",
+  platform: "generic",
+  on_start: false,
+  on_success: true,
+  on_failure: true,
+  on_killed: false,
+};
 
 interface Props {
   onClose: () => void;
@@ -17,7 +26,10 @@ const defaultDraft: TaskDraft = {
   suggested_directory: "~/",
 };
 
-const AI_TOOLS: AiTool[] = ["claude", "opencode", "codex", "custom"];
+const AI_TOOL_OPTIONS: { value: AiTool; label: string }[] = [
+  { value: "claude", label: "Claude Code CLI (claude -p)" },
+  { value: "custom", label: "自定义命令" },
+];
 
 export function AddTaskModal({ onClose }: Props) {
   const [step, setStep] = useState<"nl" | "confirm">("nl");
@@ -26,6 +38,8 @@ export function AddTaskModal({ onClose }: Props) {
   const [parseError, setParseError] = useState<string | null>(null);
   const [draft, setDraft] = useState<TaskDraft>(defaultDraft);
   const [saving, setSaving] = useState(false);
+  const [webhookEnabled, setWebhookEnabled] = useState(false);
+  const [webhook, setWebhook] = useState<WebhookConfig>({ ...defaultWebhook });
   const { addTaskToStore } = useTaskStore();
 
   const handleParse = async () => {
@@ -62,9 +76,12 @@ export function AddTaskModal({ onClose }: Props) {
         restrict_network: false,
         restrict_filesystem: false,
         env_vars: {},
+        webhook_config: webhookEnabled && webhook.url.trim() ? webhook : undefined,
       };
       const task = await api.createTask(req);
       addTaskToStore(task);
+      // Plan generation happens async in backend
+      console.info("执行计划生成中...");
       onClose();
     } catch (e) {
       console.error(e);
@@ -74,7 +91,7 @@ export function AddTaskModal({ onClose }: Props) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="modal-header">
@@ -178,8 +195,8 @@ export function AddTaskModal({ onClose }: Props) {
                   value={draft.ai_tool}
                   onChange={(e) => setDraft({ ...draft, ai_tool: e.target.value as AiTool })}
                 >
-                  {AI_TOOLS.map((t) => (
-                    <option key={t} value={t}>{t}</option>
+                  {AI_TOOL_OPTIONS.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
                   ))}
                 </select>
               </div>
@@ -205,6 +222,117 @@ export function AddTaskModal({ onClose }: Props) {
                   onChange={(e) => setDraft({ ...draft, suggested_directory: e.target.value })}
                   placeholder="~/projects/my-app"
                 />
+              </div>
+
+              {/* Webhook */}
+              <div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 6,
+                  }}
+                >
+                  <label className="label" style={{ marginBottom: 0 }}>
+                    Webhook 通知
+                  </label>
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={webhookEnabled}
+                      onChange={(e) => setWebhookEnabled(e.target.checked)}
+                    />
+                    <span className="toggle-track" />
+                  </label>
+                </div>
+                {webhookEnabled && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                      padding: "10px 12px",
+                      background: "var(--bg-input)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 4,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "120px 1fr",
+                        gap: 8,
+                      }}
+                    >
+                      <div>
+                        <label className="label">平台</label>
+                        <select
+                          className="input"
+                          value={webhook.platform}
+                          onChange={(e) =>
+                            setWebhook({
+                              ...webhook,
+                              platform: e.target.value as "feishu" | "generic",
+                            })
+                          }
+                        >
+                          <option value="generic">通用</option>
+                          <option value="feishu">飞书</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label">URL</label>
+                        <input
+                          className="input"
+                          value={webhook.url}
+                          onChange={(e) =>
+                            setWebhook({ ...webhook, url: e.target.value })
+                          }
+                          placeholder="https://..."
+                        />
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: "6px 16px",
+                      }}
+                    >
+                      {(
+                        [
+                          ["on_start", "开始时"],
+                          ["on_success", "成功时"],
+                          ["on_failure", "失败时"],
+                          ["on_killed", "终止时"],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <div
+                          key={key}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            fontSize: 11,
+                          }}
+                        >
+                          <span style={{ color: "var(--text-secondary)" }}>{label}</span>
+                          <label className="toggle">
+                            <input
+                              type="checkbox"
+                              checked={webhook[key]}
+                              onChange={(e) =>
+                                setWebhook({ ...webhook, [key]: e.target.checked })
+                              }
+                            />
+                            <span className="toggle-track" />
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

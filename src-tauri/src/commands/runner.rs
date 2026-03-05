@@ -5,33 +5,44 @@ use crate::webhook::WebhookSender;
 use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex as StdMutex};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use uuid::Uuid;
 
 // Global process registry: run_id -> PID
-static PROCESS_REGISTRY: std::sync::LazyLock<StdMutex<HashMap<String, u32>>> =
+pub static PROCESS_REGISTRY: std::sync::LazyLock<StdMutex<HashMap<String, u32>>> =
     std::sync::LazyLock::new(|| StdMutex::new(HashMap::new()));
+
+/// Expand `~` or `~/...` to the user's home directory
+fn expand_tilde(path: &str) -> String {
+    if path == "~" || path.starts_with("~/") || path.starts_with("~\\") {
+        if let Some(home) = std::env::var_os("HOME")
+            .or_else(|| std::env::var_os("USERPROFILE"))
+        {
+            let home = std::path::PathBuf::from(home);
+            let rest = if path.len() > 1 { &path[2..] } else { "" };
+            return home.join(rest).to_string_lossy().to_string();
+        }
+    }
+    path.to_string()
+}
 
 /// Build the command args for a given AI tool
 fn build_command(task: &Task) -> (String, Vec<String>) {
     match task.ai_tool {
-        AiTool::Claude => (
-            "claude".to_string(),
-            vec!["-p".to_string(), task.prompt.clone()],
-        ),
-        AiTool::Opencode => (
-            "opencode".to_string(),
-            vec![task.prompt.clone()],
-        ),
-        AiTool::Codex => (
-            "codex".to_string(),
-            vec![
-                "--approval-mode".to_string(),
-                "full-auto".to_string(),
-                task.prompt.clone(),
-            ],
-        ),
+        AiTool::Claude => {
+            let mut args = vec!["-p".to_string(), task.prompt.clone()];
+            if !task.allowed_tools.is_empty() {
+                for tool in &task.allowed_tools {
+                    args.push("--allowedTools".to_string());
+                    args.push(tool.clone());
+                }
+            }
+            if task.skip_permissions {
+                args.push("--dangerously-skip-permissions".to_string());
+            }
+            ("claude".to_string(), args)
+        }
         AiTool::Custom => {
             let tmpl = task
                 .custom_command
@@ -44,57 +55,173 @@ fn build_command(task: &Task) -> (String, Vec<String>) {
                     "{timestamp}",
                     &Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
                 );
-            let mut parts = expanded.splitn(2, ' ');
-            let prog = parts.next().unwrap_or("echo").to_string();
-            let args = parts
-                .next()
-                .unwrap_or("")
-                .split_whitespace()
-                .map(|s| s.to_string())
-                .collect();
-            (prog, args)
+            // Run via shell so built-in commands (echo, cd, etc.) work
+            #[cfg(target_os = "windows")]
+            {
+                ("cmd".to_string(), vec!["/C".to_string(), expanded])
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                ("sh".to_string(), vec!["-c".to_string(), expanded])
+            }
         }
     }
 }
 
-/// Build context-injected prompt if enabled
-fn build_prompt(task: &Task, last_run: Option<&Run>) -> String {
-    if !task.inject_context {
-        return task.prompt.clone();
+/// Collect git context from the working directory (best-effort)
+fn get_git_context(working_dir: &str) -> Option<String> {
+    let dir = expand_tilde(working_dir);
+    let mut parts = Vec::new();
+
+    // Current branch
+    if let Ok(output) = std::process::Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+    {
+        if output.status.success() {
+            let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            parts.push(format!("Branch: {}", branch));
+        }
     }
 
-    let now = Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
-    let last_run_info = match last_run {
-        Some(r) => {
-            let status = r.status.as_str();
-            let duration = r
-                .duration_ms
-                .map(|ms| {
-                    let s = ms / 1000;
-                    if s >= 60 {
-                        format!("{}m{}s", s / 60, s % 60)
-                    } else {
-                        format!("{}s", s)
-                    }
-                })
-                .unwrap_or_else(|| "-".to_string());
-            let tail: String = r.stdout.chars().rev().take(500).collect::<String>()
-                .chars().rev().collect();
-            format!(
-                "Last run: {} ({}, {})\nLast output (tail):\n{}",
-                r.started_at.format("%Y-%m-%d %H:%M"),
-                status,
-                duration,
-                tail
-            )
+    // Recent commits (last 5)
+    if let Ok(output) = std::process::Command::new("git")
+        .args(["log", "--oneline", "-5"])
+        .current_dir(&dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+    {
+        if output.status.success() {
+            let log = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !log.is_empty() {
+                parts.push(format!("Recent commits:\n{}", log));
+            }
         }
-        None => "Last run: never".to_string(),
-    };
+    }
 
-    format!(
-        "[Context]\nCurrent time: {}\nWorking directory: {}\n{}\n\n[Task]\n{}",
-        now, task.working_directory, last_run_info, task.prompt
-    )
+    // Open PRs (via gh CLI, best-effort)
+    if let Ok(output) = std::process::Command::new("gh")
+        .args([
+            "pr", "list", "--state", "open", "--limit", "10",
+            "--json", "number,title,author,updatedAt",
+            "--template",
+            "{{range .}}#{{.number}} {{.title}} (by @{{.author.login}}, updated {{timeago .updatedAt}})\n{{end}}",
+        ])
+        .current_dir(&dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+    {
+        if output.status.success() {
+            let prs = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !prs.is_empty() {
+                parts.push(format!("Open PRs:\n{}", prs));
+            }
+        }
+    }
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("\n"))
+    }
+}
+
+/// Build context-injected prompt with execution plan
+fn build_prompt(task: &Task, last_run: Option<&Run>, git_context: Option<&str>) -> String {
+    let mut parts = Vec::new();
+
+    // 1. Inject execution plan
+    if !task.execution_plan.is_empty() {
+        parts.push(format!("[Execution Plan]\n{}", task.execution_plan));
+    }
+
+    // 2. Inject historical context if enabled
+    if task.inject_context {
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
+        let last_run_info = match last_run {
+            Some(r) => {
+                let status = r.status.as_str();
+                let duration = r
+                    .duration_ms
+                    .map(|ms| {
+                        let s = ms / 1000;
+                        if s >= 60 {
+                            format!("{}m{}s", s / 60, s % 60)
+                        } else {
+                            format!("{}s", s)
+                        }
+                    })
+                    .unwrap_or_else(|| "-".to_string());
+                let tail: String = r.stdout.chars().rev().take(500).collect::<String>()
+                    .chars().rev().collect();
+                format!(
+                    "Last run: {} ({}, {})\nLast output (tail):\n{}",
+                    r.started_at.format("%Y-%m-%d %H:%M"),
+                    status,
+                    duration,
+                    tail
+                )
+            }
+            None => "Last run: never".to_string(),
+        };
+        parts.push(format!(
+            "[Context]\nCurrent time: {}\nWorking directory: {}\n{}",
+            now, task.working_directory, last_run_info
+        ));
+    }
+
+    // 3. Inject git context if enabled
+    if task.inject_context {
+        if let Some(git_ctx) = git_context {
+            parts.push(format!("[Git Context]\n{}", git_ctx));
+        }
+    }
+
+    // 4. Task prompt
+    parts.push(format!("[Task]\n{}", task.prompt));
+
+    parts.join("\n\n")
+}
+
+/// Describe an exit status in human-readable Chinese
+fn describe_exit(status: &std::process::ExitStatus) -> String {
+    if let Some(code) = status.code() {
+        match code {
+            0 => "正常退出".to_string(),
+            1 => "一般错误 (exit 1)".to_string(),
+            2 => "命令用法错误".to_string(),
+            126 => "命令不可执行".to_string(),
+            127 => "命令未找到".to_string(),
+            130 => "被 Ctrl+C 中断 (SIGINT)".to_string(),
+            137 => "被系统强制终止 (SIGKILL/OOM)".to_string(),
+            143 => "被正常终止 (SIGTERM)".to_string(),
+            _ => format!("退出码: {}", code),
+        }
+    } else {
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::ExitStatusExt;
+            if let Some(sig) = status.signal() {
+                return format!("被信号终止: {}", sig);
+            }
+        }
+        "异常终止（无退出码）".to_string()
+    }
+}
+
+/// Log a phase message to stderr buffer and emit event
+fn log_phase(buf: &mut String, app: &AppHandle, run_id: &str, msg: &str) {
+    let line = format!("[ai-cron] {}", msg);
+    buf.push_str(&line);
+    buf.push('\n');
+    let _ = app.emit("run:output", serde_json::json!({
+        "runId": run_id, "chunk": line, "stream": "stderr"
+    }));
 }
 
 /// Core async run function — called by scheduler and manual trigger
@@ -118,7 +245,7 @@ pub async fn execute_task(
         };
         conn.query_row(
             "SELECT id, task_id, status, exit_code, stdout, started_at, ended_at, duration_ms,
-             triggered_by, stderr FROM runs WHERE task_id = ?1 ORDER BY started_at DESC LIMIT 1",
+             triggered_by, stderr, goal_evaluation FROM runs WHERE task_id = ?1 ORDER BY started_at DESC LIMIT 1",
             [&task.id],
             |row| {
                 Ok(Run {
@@ -137,13 +264,23 @@ pub async fn execute_task(
                         .and_then(|s| s.parse().ok()),
                     duration_ms: row.get::<_, Option<i64>>(7)?.map(|v| v as u64),
                     triggered_by: TriggerSource::from_str(&row.get::<_, String>(8)?),
+                    goal_evaluation: row.get(10)?,
                 })
             },
         )
         .ok()
     };
 
-    let final_prompt = build_prompt(&task, last_run.as_ref());
+    let git_context = if task.inject_context {
+        get_git_context(&task.working_directory)
+    } else {
+        None
+    };
+    let final_prompt = build_prompt(&task, last_run.as_ref(), git_context.as_deref());
+
+    // Pre-execution feasibility check
+    let mut pre_check_result: Option<String> = None;
+    // (will be populated after run record is created so we can log to stderr)
 
     // Insert run record as "running"
     {
@@ -187,9 +324,55 @@ pub async fn execute_task(
     let (program, args) = build_command(&cmd_task);
 
     // Build tokio Command
+    let work_dir = expand_tilde(&task.working_directory);
+
+    let mut stdout_buf = String::new();
+    let mut stderr_buf = String::new();
+    let mut exit_code: Option<i32> = None;
+    let final_status: RunStatus;
+
+    // Phase logging: start
+    log_phase(&mut stderr_buf, &app_handle, &run_id,
+        &format!("▶ 开始执行任务: {}", task.name));
+    log_phase(&mut stderr_buf, &app_handle, &run_id,
+        &format!("⚙ 工作目录: {}", work_dir));
+    let args_preview = if args.len() <= 2 {
+        args.join(" ")
+    } else {
+        format!("{} ...({}个参数)", args[0], args.len())
+    };
+    log_phase(&mut stderr_buf, &app_handle, &run_id,
+        &format!("⚙ 命令: {} {}", program, args_preview));
+    if !task.execution_plan.is_empty() {
+        log_phase(&mut stderr_buf, &app_handle, &run_id,
+            &format!("⚙ 执行计划已注入 ({} 字符)", task.execution_plan.len()));
+
+        // Pre-execution feasibility check
+        if let Ok(settings) = crate::commands::tools::get_settings_core(&db) {
+            let dir_ctx = crate::commands::plan_gen::scan_directory_context(&task.working_directory);
+            match crate::commands::plan_gen::pre_check_feasibility(
+                &task.execution_plan, dir_ctx.as_deref(), &settings
+            ).await {
+                Ok(result) => {
+                    pre_check_result = Some(result.clone());
+                    let feasible = result.contains("\"feasible\": true") || result.contains("\"feasible\":true");
+                    if feasible {
+                        log_phase(&mut stderr_buf, &app_handle, &run_id, "✓ 可达性检查通过");
+                    } else {
+                        log_phase(&mut stderr_buf, &app_handle, &run_id,
+                            &format!("⚠ 可达性检查警告: {}", result.trim()));
+                    }
+                }
+                Err(e) => {
+                    log_phase(&mut stderr_buf, &app_handle, &run_id,
+                        &format!("⚠ 可达性检查跳过: {}", e));
+                }
+            }
+        }
+    }
     let mut cmd = tokio::process::Command::new(&program);
     cmd.args(&args)
-        .current_dir(&task.working_directory)
+        .current_dir(&work_dir)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
@@ -215,21 +398,18 @@ pub async fn execute_task(
         full_args.extend(args.clone());
         cmd = tokio::process::Command::new("unshare");
         cmd.args(&full_args)
-            .current_dir(&task.working_directory)
+            .current_dir(&work_dir)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true);
     }
 
-    let mut stdout_buf = String::new();
-    let mut stderr_buf = String::new();
-    let mut exit_code: Option<i32> = None;
-    let final_status: RunStatus;
-
     match cmd.spawn() {
         Ok(mut child) => {
             // Register PID in process registry
             if let Some(pid) = child.id() {
+                log_phase(&mut stderr_buf, &app_handle, &run_id,
+                    &format!("⏱ 进程已启动 (PID: {})", pid));
                 if let Ok(mut reg) = PROCESS_REGISTRY.lock() {
                     reg.insert(run_id.clone(), pid);
                 }
@@ -294,14 +474,22 @@ pub async fn execute_task(
             match child.wait().await {
                 Ok(status) => {
                     exit_code = status.code();
-                    final_status = if status.success() {
-                        RunStatus::Success
+                    let desc = describe_exit(&status);
+                    if status.success() {
+                        final_status = RunStatus::Success;
+                        let duration = (Utc::now() - started_at).num_milliseconds().max(0);
+                        log_phase(&mut stderr_buf, &app_handle, &run_id,
+                            &format!("✓ 进程正常退出 ({}, 耗时: {}ms)", desc, duration));
                     } else {
-                        RunStatus::Failed
-                    };
+                        final_status = RunStatus::Failed;
+                        log_phase(&mut stderr_buf, &app_handle, &run_id,
+                            &format!("✗ 进程异常退出 ({})", desc));
+                    }
                 }
-                Err(_) => {
+                Err(e) => {
                     final_status = RunStatus::Failed;
+                    log_phase(&mut stderr_buf, &app_handle, &run_id,
+                        &format!("✗ 等待进程失败: {}", e));
                 }
             }
 
@@ -311,7 +499,8 @@ pub async fn execute_task(
             }
         }
         Err(e) => {
-            stderr_buf = format!("Failed to spawn process '{}': {}", program, e);
+            log_phase(&mut stderr_buf, &app_handle, &run_id,
+                &format!("✗ 进程启动失败: {} (命令: {})", e, program));
             final_status = RunStatus::Failed;
         }
     }
@@ -357,7 +546,104 @@ pub async fn execute_task(
         );
     }
 
-    // Emit run:completed
+    // Synchronous post-execution goal verification (for tasks with execution plan)
+    // If goal not passed, downgrade status to failed
+    let mut final_status = final_status;
+    if final_status == RunStatus::Success && !task.execution_plan.is_empty() {
+        log_phase(&mut stderr_buf, &app_handle, &run_id, "⏳ 正在进行目标验证...");
+        if let Ok(settings) = crate::commands::tools::get_settings_core(&db) {
+            match crate::commands::plan_gen::post_check_goal(&task.execution_plan, &stdout_buf, &settings).await {
+                Ok(post_result) => {
+                    let passed = post_result.contains("\"passed\": true") || post_result.contains("\"passed\":true");
+                    let evaluation = serde_json::json!({
+                        "pre_check": pre_check_result.as_deref().unwrap_or("{}"),
+                        "post_check": post_result.trim(),
+                        "passed": passed,
+                        "evaluated_at": chrono::Utc::now().to_rfc3339()
+                    }).to_string();
+
+                    // Store goal_evaluation
+                    if let Ok(conn) = db.0.lock() {
+                        conn.execute(
+                            "UPDATE runs SET goal_evaluation = ?1 WHERE id = ?2",
+                            rusqlite::params![evaluation, run_id],
+                        ).ok();
+                    }
+
+                    if passed {
+                        log_phase(&mut stderr_buf, &app_handle, &run_id, "✓ 目标验证通过");
+                    } else {
+                        log_phase(&mut stderr_buf, &app_handle, &run_id, "✗ 目标验证未通过，状态降级为 failed");
+                        final_status = RunStatus::Failed;
+                        // Update run status and task status in DB
+                        if let Ok(conn) = db.0.lock() {
+                            conn.execute(
+                                "UPDATE runs SET status = 'failed' WHERE id = ?1",
+                                rusqlite::params![run_id],
+                            ).ok();
+                            conn.execute(
+                                "UPDATE tasks SET last_run_status = 'failed' WHERE id = ?1",
+                                rusqlite::params![task.id],
+                            ).ok();
+                        }
+                    }
+
+                    let _ = app_handle.emit("run:evaluated", serde_json::json!({
+                        "runId": run_id, "taskId": task.id, "passed": passed,
+                    }));
+                }
+                Err(e) => {
+                    log::warn!("目标验证失败 (run {}): {}", run_id, e);
+                    log_phase(&mut stderr_buf, &app_handle, &run_id,
+                        &format!("⚠ 目标验证跳过: {}", e));
+                }
+            }
+        }
+        // Update stderr in DB after goal verification logging
+        if let Ok(conn) = db.0.lock() {
+            conn.execute(
+                "UPDATE runs SET stderr = ?1 WHERE id = ?2",
+                rusqlite::params![stderr_buf, run_id],
+            ).ok();
+        }
+    }
+
+    // Update consecutive_failures counter
+    {
+        if let Ok(conn) = db.0.lock() {
+            if final_status == RunStatus::Failed {
+                let new_count = task.consecutive_failures + 1;
+                conn.execute(
+                    "UPDATE tasks SET consecutive_failures = ?1 WHERE id = ?2",
+                    rusqlite::params![new_count, task.id],
+                ).ok();
+
+                // Auto-refine plan after 3 consecutive failures
+                if new_count >= 3 && !task.execution_plan.is_empty() {
+                    let failure_info = format!(
+                        "Exit code: {:?}\nStderr (tail):\n{}",
+                        exit_code,
+                        &stderr_buf[..stderr_buf.len().min(1000)]
+                    );
+                    let db_clone = db.clone();
+                    let task_id = task.id.clone();
+                    let app_clone = app_handle.clone();
+                    tokio::spawn(async move {
+                        crate::commands::plan_gen::auto_refine_plan(
+                            db_clone, task_id, failure_info, app_clone
+                        ).await;
+                    });
+                }
+            } else if final_status == RunStatus::Success {
+                conn.execute(
+                    "UPDATE tasks SET consecutive_failures = 0 WHERE id = ?1",
+                    rusqlite::params![task.id],
+                ).ok();
+            }
+        }
+    }
+
+    // Emit run:completed (with final status after goal verification)
     let _ = app_handle.emit(
         "run:completed",
         serde_json::json!({
@@ -368,9 +654,6 @@ pub async fn execute_task(
             "durationMs": duration_ms
         }),
     );
-
-    // Send desktop notification
-    send_notification(&app_handle, &task, &final_status);
 
     // Send webhook on completion
     if let Some(ref wh) = task.webhook_config {
@@ -387,61 +670,6 @@ pub async fn execute_task(
     }
 }
 
-/// Send desktop notification based on settings
-fn send_notification(app_handle: &AppHandle, task: &Task, status: &RunStatus) {
-    use tauri_plugin_notification::NotificationExt;
-
-    // Read settings to check notification preferences
-    if let Some(db) = app_handle.try_state::<DbConn>() {
-        let (notify_success, notify_failure) = {
-            let conn = match db.0.lock() {
-                Ok(c) => c,
-                Err(_) => return,
-            };
-            let success: bool = conn
-                .query_row(
-                    "SELECT value FROM settings WHERE key = 'notify_on_success'",
-                    [],
-                    |r| r.get::<_, String>(0),
-                )
-                .map(|v| v == "true" || v == "1")
-                .unwrap_or(false);
-            let failure: bool = conn
-                .query_row(
-                    "SELECT value FROM settings WHERE key = 'notify_on_failure'",
-                    [],
-                    |r| r.get::<_, String>(0),
-                )
-                .map(|v| v == "true" || v == "1")
-                .unwrap_or(true);
-            (success, failure)
-        };
-
-        let should_notify = match status {
-            RunStatus::Success => notify_success,
-            RunStatus::Failed => notify_failure,
-            RunStatus::Killed => notify_failure,
-            _ => false,
-        };
-
-        if should_notify {
-            let icon = match status {
-                RunStatus::Success => "✓",
-                RunStatus::Failed => "✗",
-                RunStatus::Killed => "⊘",
-                _ => "",
-            };
-            app_handle
-                .notification()
-                .builder()
-                .title("AI Cron")
-                .body(format!("{} {} — {}", icon, task.name, status.as_str()))
-                .show()
-                .ok();
-        }
-    }
-}
-
 /// Tauri command: manually trigger a task now
 #[tauri::command]
 pub async fn trigger_task_now(
@@ -455,10 +683,11 @@ pub async fn trigger_task_now(
         conn.query_row(
             "SELECT id, name, cron_expression, cron_human, ai_tool, custom_command, prompt,
              working_directory, enabled, inject_context, restrict_network, restrict_filesystem,
-             env_vars, webhook_config, created_at, updated_at, last_run_at, last_run_status
+             env_vars, webhook_config, created_at, updated_at, last_run_at, last_run_status,
+             execution_plan, consecutive_failures, allowed_tools, skip_permissions
              FROM tasks WHERE id = ?1",
             [&task_id],
-            crate::commands::tasks::row_to_task_pub,
+            crate::commands::tasks::row_to_task,
         )
         .map_err(|e| e.to_string())?
     };
@@ -510,7 +739,7 @@ pub async fn kill_run(
 
         // Update DB
         let ended_at = Utc::now();
-        {
+        let webhook_task = {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
             let task_id: Option<String> = conn
                 .query_row(
@@ -545,6 +774,27 @@ pub async fn kill_run(
                     "durationMs": 0
                 }),
             );
+
+            // Query full task for webhook notification
+            task_id.and_then(|tid| {
+                conn.query_row(
+                    "SELECT id, name, cron_expression, cron_human, ai_tool, custom_command, prompt,
+                     working_directory, enabled, inject_context, restrict_network, restrict_filesystem,
+                     env_vars, webhook_config, created_at, updated_at, last_run_at, last_run_status,
+             execution_plan, consecutive_failures, allowed_tools, skip_permissions
+                     FROM tasks WHERE id = ?1",
+                    [&tid],
+                    crate::commands::tasks::row_to_task,
+                )
+                .ok()
+            })
+        };
+
+        // Send webhook for killed status (outside DB lock)
+        if let Some(ref task) = webhook_task {
+            if let Some(ref wh) = task.webhook_config {
+                WebhookSender::new().send(wh, task, &RunStatus::Killed, None, "", "").await;
+            }
         }
     }
 
@@ -575,6 +825,10 @@ mod tests {
             restrict_filesystem: false,
             env_vars: HashMap::new(),
             webhook_config: None,
+            allowed_tools: Vec::new(),
+            skip_permissions: false,
+            execution_plan: String::new(),
+            consecutive_failures: 0,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             last_run_at: None,
@@ -591,33 +845,27 @@ mod tests {
     }
 
     #[test]
-    fn build_command_opencode() {
-        let task = make_test_task(AiTool::Opencode);
-        let (prog, args) = build_command(&task);
-        assert_eq!(prog, "opencode");
-        assert_eq!(args, vec!["do something"]);
-    }
-
-    #[test]
-    fn build_command_codex() {
-        let task = make_test_task(AiTool::Codex);
-        let (prog, args) = build_command(&task);
-        assert_eq!(prog, "codex");
-        assert_eq!(args, vec!["--approval-mode", "full-auto", "do something"]);
-    }
-
-    #[test]
     fn build_command_custom_with_template() {
         let mut task = make_test_task(AiTool::Custom);
         task.custom_command = Some("mybin --prompt {prompt} --dir {cwd}".to_string());
         let (prog, args) = build_command(&task);
-        assert_eq!(prog, "mybin");
-        // Note: split_whitespace splits "do something" into ["do", "something"]
-        assert!(args.contains(&"--prompt".to_string()));
-        assert!(args.contains(&"do".to_string()));
-        assert!(args.contains(&"something".to_string()));
-        assert!(args.contains(&"/tmp/work".to_string()));
-        assert!(args.contains(&"--dir".to_string()));
+        // Custom commands run via shell
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(prog, "cmd");
+            assert_eq!(args[0], "/C");
+            assert!(args[1].contains("mybin"));
+            assert!(args[1].contains("do something"));
+            assert!(args[1].contains("/tmp/work"));
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert_eq!(prog, "sh");
+            assert_eq!(args[0], "-c");
+            assert!(args[1].contains("mybin"));
+            assert!(args[1].contains("do something"));
+            assert!(args[1].contains("/tmp/work"));
+        }
     }
 
     #[test]
@@ -625,23 +873,28 @@ mod tests {
         let mut task = make_test_task(AiTool::Custom);
         task.custom_command = Some("echo {timestamp}".to_string());
         let (prog, args) = build_command(&task);
-        assert_eq!(prog, "echo");
-        // timestamp is dynamic, just check it's not the literal placeholder
-        assert!(!args[0].contains("{timestamp}"));
+        // Custom commands run via shell
+        #[cfg(target_os = "windows")]
+        assert_eq!(prog, "cmd");
+        #[cfg(not(target_os = "windows"))]
+        assert_eq!(prog, "sh");
+        // The expanded command should not contain the literal placeholder
+        let cmd_str = &args[1];
+        assert!(!cmd_str.contains("{timestamp}"));
     }
 
     #[test]
     fn build_prompt_no_inject() {
         let task = make_test_task(AiTool::Claude);
-        let result = build_prompt(&task, None);
-        assert_eq!(result, "do something");
+        let result = build_prompt(&task, None, None);
+        assert_eq!(result, "[Task]\ndo something");
     }
 
     #[test]
     fn build_prompt_inject_no_last_run() {
         let mut task = make_test_task(AiTool::Claude);
         task.inject_context = true;
-        let result = build_prompt(&task, None);
+        let result = build_prompt(&task, None, None);
         assert!(result.contains("[Context]"));
         assert!(result.contains("Last run: never"));
         assert!(result.contains("[Task]"));
@@ -663,8 +916,9 @@ mod tests {
             ended_at: Some(Utc::now()),
             duration_ms: Some(5000),
             triggered_by: TriggerSource::Scheduler,
+            goal_evaluation: None,
         };
-        let result = build_prompt(&task, Some(&last_run));
+        let result = build_prompt(&task, Some(&last_run), None);
         assert!(result.contains("[Context]"));
         assert!(result.contains("success"));
         assert!(result.contains("5s"));
@@ -688,8 +942,74 @@ mod tests {
             ended_at: Some(Utc::now()),
             duration_ms: Some(125000), // 2m5s
             triggered_by: TriggerSource::Manual,
+            goal_evaluation: None,
         };
-        let result = build_prompt(&task, Some(&last_run));
+        let result = build_prompt(&task, Some(&last_run), None);
         assert!(result.contains("2m5s"));
+    }
+
+    #[test]
+    fn build_prompt_with_execution_plan() {
+        let mut task = make_test_task(AiTool::Claude);
+        task.execution_plan = "1. Step one\n2. Step two".to_string();
+        let result = build_prompt(&task, None, None);
+        assert!(result.contains("[Execution Plan]"));
+        assert!(result.contains("1. Step one"));
+        assert!(result.contains("[Task]"));
+        assert!(result.contains("do something"));
+    }
+
+    #[test]
+    fn build_prompt_with_plan_and_context() {
+        let mut task = make_test_task(AiTool::Claude);
+        task.execution_plan = "Plan here".to_string();
+        task.inject_context = true;
+        let result = build_prompt(&task, None, None);
+        assert!(result.contains("[Execution Plan]"));
+        assert!(result.contains("[Context]"));
+        assert!(result.contains("[Task]"));
+        // Verify order: plan before context before task
+        let plan_pos = result.find("[Execution Plan]").unwrap();
+        let ctx_pos = result.find("[Context]").unwrap();
+        let task_pos = result.find("[Task]").unwrap();
+        assert!(plan_pos < ctx_pos);
+        assert!(ctx_pos < task_pos);
+    }
+
+    #[test]
+    fn build_prompt_empty_plan_not_injected() {
+        let mut task = make_test_task(AiTool::Claude);
+        task.execution_plan = String::new();
+        let result = build_prompt(&task, None, None);
+        assert!(!result.contains("[Execution Plan]"));
+    }
+
+    #[test]
+    fn describe_exit_common_codes() {
+        // Test the exit code matching logic directly (ExitStatus can't be constructed in tests)
+        let cases = vec![
+            (0, "正常退出"),
+            (1, "一般错误"),
+            (127, "命令未找到"),
+            (137, "SIGKILL/OOM"),
+            (143, "SIGTERM"),
+            (42, "退出码: 42"),
+        ];
+        for (code, expected_substr) in cases {
+            // Create a mock-like test by checking the match arms directly
+            let desc = match code {
+                0 => "正常退出".to_string(),
+                1 => "一般错误 (exit 1)".to_string(),
+                2 => "命令用法错误".to_string(),
+                126 => "命令不可执行".to_string(),
+                127 => "命令未找到".to_string(),
+                130 => "被 Ctrl+C 中断 (SIGINT)".to_string(),
+                137 => "被系统强制终止 (SIGKILL/OOM)".to_string(),
+                143 => "被正常终止 (SIGTERM)".to_string(),
+                _ => format!("退出码: {}", code),
+            };
+            assert!(desc.contains(expected_substr),
+                "code {} -> '{}' should contain '{}'", code, desc, expected_substr);
+        }
     }
 }

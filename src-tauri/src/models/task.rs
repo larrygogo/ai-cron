@@ -6,8 +6,6 @@ use std::collections::HashMap;
 #[serde(rename_all = "snake_case")]
 pub enum AiTool {
     Claude,
-    Opencode,
-    Codex,
     Custom,
 }
 
@@ -15,23 +13,19 @@ impl AiTool {
     pub fn as_str(&self) -> &str {
         match self {
             AiTool::Claude => "claude",
-            AiTool::Opencode => "opencode",
-            AiTool::Codex => "codex",
             AiTool::Custom => "custom",
         }
     }
 
     pub fn from_str(s: &str) -> Self {
         match s {
-            "opencode" => AiTool::Opencode,
-            "codex" => AiTool::Codex,
             "custom" => AiTool::Custom,
             _ => AiTool::Claude,
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct WebhookConfig {
     pub url: String,
     pub platform: String, // "feishu" | "generic"
@@ -57,6 +51,10 @@ pub struct Task {
     pub restrict_filesystem: bool,
     pub env_vars: HashMap<String, String>,
     pub webhook_config: Option<WebhookConfig>,
+    pub allowed_tools: Vec<String>,
+    pub skip_permissions: bool,
+    pub execution_plan: String,
+    pub consecutive_failures: u32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub last_run_at: Option<DateTime<Utc>>,
@@ -78,6 +76,8 @@ pub struct CreateTaskRequest {
     pub restrict_filesystem: Option<bool>,
     pub env_vars: Option<HashMap<String, String>>,
     pub webhook_config: Option<WebhookConfig>,
+    pub allowed_tools: Option<Vec<String>>,
+    pub skip_permissions: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,6 +95,9 @@ pub struct UpdateTaskRequest {
     pub restrict_filesystem: Option<bool>,
     pub env_vars: Option<HashMap<String, String>>,
     pub webhook_config: Option<Option<WebhookConfig>>,
+    pub allowed_tools: Option<Vec<String>>,
+    pub skip_permissions: Option<bool>,
+    pub execution_plan: Option<String>,
 }
 
 #[cfg(test)]
@@ -105,8 +108,6 @@ mod tests {
     fn ai_tool_from_str_as_str_roundtrip() {
         let cases = vec![
             ("claude", AiTool::Claude),
-            ("opencode", AiTool::Opencode),
-            ("codex", AiTool::Codex),
             ("custom", AiTool::Custom),
         ];
         for (s, expected) in &cases {
@@ -120,20 +121,22 @@ mod tests {
     fn ai_tool_from_str_unknown_defaults_to_claude() {
         assert_eq!(AiTool::from_str("unknown"), AiTool::Claude);
         assert_eq!(AiTool::from_str(""), AiTool::Claude);
+        assert_eq!(AiTool::from_str("opencode"), AiTool::Claude);
+        assert_eq!(AiTool::from_str("codex"), AiTool::Claude);
     }
 
     #[test]
     fn ai_tool_serde_roundtrip() {
-        let tool = AiTool::Codex;
+        let tool = AiTool::Custom;
         let json = serde_json::to_string(&tool).unwrap();
-        assert_eq!(json, "\"codex\"");
+        assert_eq!(json, "\"custom\"");
         let back: AiTool = serde_json::from_str(&json).unwrap();
-        assert_eq!(back, AiTool::Codex);
+        assert_eq!(back, AiTool::Custom);
     }
 
     #[test]
     fn ai_tool_serde_all_variants() {
-        for variant in &[AiTool::Claude, AiTool::Opencode, AiTool::Codex, AiTool::Custom] {
+        for variant in &[AiTool::Claude, AiTool::Custom] {
             let json = serde_json::to_string(variant).unwrap();
             let back: AiTool = serde_json::from_str(&json).unwrap();
             assert_eq!(&back, variant);

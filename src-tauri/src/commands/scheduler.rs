@@ -2,6 +2,7 @@
 pub async fn preview_next_runs(
     cron_expr: String,
     count: Option<usize>,
+    timezone: Option<String>,
 ) -> Result<Vec<String>, String> {
     use chrono::Utc;
     use tokio_cron_scheduler::Job;
@@ -10,23 +11,30 @@ pub async fn preview_next_runs(
     let now = Utc::now();
 
     // Validate cron expression by attempting to create a job
-    let valid = Job::new_async(cron_expr.as_str(), |_, _| Box::pin(async {})).is_ok();
+    // tokio-cron-scheduler expects 6-7 fields (with seconds); prepend "0" for standard 5-field cron
+    let scheduler_expr = if cron_expr.split_whitespace().count() == 5 {
+        format!("0 {}", cron_expr)
+    } else {
+        cron_expr.clone()
+    };
+    let valid = Job::new_async(scheduler_expr.as_str(), |_, _| Box::pin(async {})).is_ok();
     if !valid {
         return Err(format!("Invalid cron expression: {}", cron_expr));
     }
 
-    // Simple next-N calculation using chrono + cron crate
-    // tokio-cron-scheduler uses the cron crate internally
-    // We'll use a simple approach: advance time and check
+    // Resolve timezone
+    let tz = resolve_timezone(timezone.as_deref());
+
     let mut results = Vec::new();
     let mut check_time = now;
 
     for _ in 0..count {
         check_time = check_time + chrono::Duration::minutes(1);
-        // Walk minute by minute to find next match (up to 1 year)
         let mut found = false;
         for _step in 0..(365 * 24 * 60) {
-            if cron_matches(&cron_expr, &check_time) {
+            // Convert UTC time to the user's timezone for cron matching
+            let local_dt = check_time.with_timezone(&tz).naive_local();
+            if cron_matches(&cron_expr, &local_dt) {
                 results.push(check_time.to_rfc3339());
                 found = true;
                 check_time = check_time + chrono::Duration::minutes(1);
@@ -42,8 +50,17 @@ pub async fn preview_next_runs(
     Ok(results)
 }
 
-/// Simple 5-field cron matching (min hour dom month dow)
-fn cron_matches(expr: &str, dt: &chrono::DateTime<chrono::Utc>) -> bool {
+/// Resolve timezone string to a chrono_tz::Tz
+fn resolve_timezone(tz_str: Option<&str>) -> chrono_tz::Tz {
+    let tz_name = match tz_str {
+        Some(s) if !s.is_empty() && s != "system" => s.to_string(),
+        _ => iana_time_zone::get_timezone().unwrap_or_else(|_| "UTC".to_string()),
+    };
+    tz_name.parse::<chrono_tz::Tz>().unwrap_or(chrono_tz::UTC)
+}
+
+/// Simple 5-field cron matching (min hour dom month dow) using NaiveDateTime (local time)
+fn cron_matches(expr: &str, dt: &chrono::NaiveDateTime) -> bool {
     use chrono::Datelike;
     use chrono::Timelike;
 

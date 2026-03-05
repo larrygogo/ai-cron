@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import type {
   AppSettings,
   CreateTaskRequest,
+  McpStatus,
   Run,
   RunWithTaskName,
   Task,
@@ -48,14 +49,25 @@ export const triggerTaskNow = (taskId: string) =>
 export const killRun = (runId: string) => invoke<void>("kill_run", { runId });
 
 // ── Scheduler ──────────────────────────────────────────────────────────────
-export const previewNextRuns = (cronExpr: string, count?: number) =>
-  invoke<string[]>("preview_next_runs", { cronExpr, count });
+export const previewNextRuns = (cronExpr: string, count?: number, timezone?: string) =>
+  invoke<string[]>("preview_next_runs", { cronExpr, count, timezone });
 
 // ── Tools & Settings ───────────────────────────────────────────────────────
 export const detectTools = () => invoke<ToolInfo[]>("detect_tools");
+export const getSystemTimezone = () => invoke<string>("get_system_timezone");
 export const getSettings = () => invoke<AppSettings>("get_settings");
 export const updateSettings = (settings: AppSettings) =>
   invoke<void>("update_settings", { settings });
+
+// ── MCP ───────────────────────────────────────────────────────────────────
+export const getMcpStatus = () => invoke<McpStatus>("get_mcp_status");
+export const repairMcpConfig = () => invoke<string>("repair_mcp_config");
+
+// ── Execution Plan ────────────────────────────────────────────────────────
+export const generatePlan = (taskId: string) =>
+  invoke<string>("generate_plan", { taskId });
+export const updatePlan = (taskId: string, plan: string) =>
+  invoke<void>("update_plan", { taskId, plan });
 
 // ── AI Parse ───────────────────────────────────────────────────────────────
 export const parseNlToTask = (input: string) =>
@@ -90,3 +102,15 @@ export const onRunCompleted = (
     exitCode?: number;
     durationMs: number;
   }>("run:completed", (e) => cb(e.payload));
+
+export const onPlanGenerated = (
+  cb: (taskId: string) => void
+) => listen<string>("task:plan_generated", (e) => cb(e.payload));
+
+export const onRunEvaluated = (
+  cb: (e: { runId: string; taskId: string; passed: boolean }) => void
+) =>
+  listen<{ runId: string; taskId: string; passed: boolean }>(
+    "run:evaluated",
+    (e) => cb(e.payload)
+  );
