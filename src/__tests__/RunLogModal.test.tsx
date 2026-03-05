@@ -77,7 +77,7 @@ describe("RunLogModal", () => {
       status: "failed",
       stderr: "[ai-cron] ▶ 开始执行\nerror detail",
     });
-    const { container } = render(<RunLogModal run={run} onClose={onClose} />);
+    render(<RunLogModal run={run} onClose={onClose} />);
 
     const badge = screen.getByText("2");
     expect(badge).toBeInTheDocument();

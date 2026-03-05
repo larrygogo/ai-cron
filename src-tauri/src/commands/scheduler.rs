@@ -29,7 +29,7 @@ pub async fn preview_next_runs(
     let mut check_time = now;
 
     for _ in 0..count {
-        check_time = check_time + chrono::Duration::minutes(1);
+        check_time += chrono::Duration::minutes(1);
         let mut found = false;
         for _step in 0..(365 * 24 * 60) {
             // Convert UTC time to the user's timezone for cron matching
@@ -37,10 +37,10 @@ pub async fn preview_next_runs(
             if cron_matches(&cron_expr, &local_dt) {
                 results.push(check_time.to_rfc3339());
                 found = true;
-                check_time = check_time + chrono::Duration::minutes(1);
+                check_time += chrono::Duration::minutes(1);
                 break;
             }
-            check_time = check_time + chrono::Duration::minutes(1);
+            check_time += chrono::Duration::minutes(1);
         }
         if !found {
             break;
@@ -105,7 +105,7 @@ fn field_matches(field: &str, value: u32) -> bool {
                 } else {
                     parts[0].parse().unwrap_or(0)
                 };
-                return step > 0 && value >= base && (value - base) % step == 0;
+                return step > 0 && value >= base && (value - base).is_multiple_of(step);
             }
         }
     }

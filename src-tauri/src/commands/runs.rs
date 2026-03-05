@@ -200,7 +200,7 @@ pub fn cleanup_runs_core(db: &DbConn) -> Result<u64, String> {
             |row| row.get(0),
         )
         .unwrap_or(100);
-    let per_task = per_task.max(1).min(10000);
+    let per_task = per_task.clamp(1, 10000);
 
     let deleted_per_task = conn
         .execute(
